@@ -65,7 +65,12 @@
   #views { position:relative; }
   #selbar { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; gap:6px; align-items:center;
     background:var(--bg); border:2px solid var(--line); border-radius:12px; padding:6px 8px; box-shadow:0 4px 16px rgba(0,0,0,.18); z-index:5; max-width:calc(100% - 24px); }
-  #selbar[hidden] { display:none; }
+  #selbar[hidden], #cablebar[hidden] { display:none; }
+  #cablebar { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:center;
+    background:var(--bg); border:2px solid var(--line); border-radius:12px; padding:6px 8px; box-shadow:0 4px 16px rgba(0,0,0,.18); z-index:6; max-width:calc(100% - 16px); font-size:13px; }
+  #cablebar .hint { color:var(--muted); }
+  #b-cables.on { background:var(--ink); color:var(--bg); }
+  .gear td { padding:2px 6px 2px 0; } .gear td:last-child { text-align:right; font-weight:700; }
   #selbar .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:38vw; padding:0 4px; }
   #selbar .danger { border-color:var(--bad-ink); color:var(--bad-ink); }
   .kv { display:grid; grid-template-columns:1fr 1fr; gap:0 8px; }
@@ -115,6 +120,7 @@
     <h1>Stage Designer</h1>
     <select id="sel-stage" aria-label="Stage"></select>
     <select id="sel-layout" aria-label="Layout"></select>
+    <button id="b-cables" type="button">Cables</button>
     <button id="b-new" type="button">New layout</button>
     <button id="b-rename" type="button">Rename</button>
     <button id="b-del" type="button">Delete</button>
@@ -135,6 +141,12 @@
       <div id="tabs"><button data-v="top" type="button">Top</button><button data-v="front" type="button">Front</button><button data-v="side" type="button">Side</button></div>
       <div class="view v-top on" data-v="top"><span class="vt">Top · audience at bottom</span><svg id="svg-top"></svg></div>
       <div class="view v-front" data-v="front"><span class="vt">Front · from the audience</span><svg id="svg-front"></svg></div>
+      <div id="cablebar" hidden>
+        <select id="cb-kind" aria-label="Cable type"><option value="dmx">DMX</option><option value="powercon">Power (powerCON)</option><option value="true1">Power (TRUE1)</option><option value="ethercon">Data (etherCON)</option><option value="sdi">SDI</option></select>
+        <span class="hint" id="cb-hint"></span>
+        <button type="button" id="cb-break">New chain</button>
+        <button type="button" class="primary" id="cb-done">Done</button>
+      </div>
       <div id="selbar" hidden><span class="nm" id="sb-name"></span><button type="button" id="sb-dup">Duplicate</button><button type="button" class="danger" id="sb-del">Remove</button><button type="button" id="sb-done" aria-label="Deselect">Done</button></div>
       <div class="view v-side" data-v="side"><span class="vt">Side · audience on the left</span><svg id="svg-side"></svg></div>
     </section>
@@ -199,7 +211,7 @@
       $('lock').hidden = true; $('app').hidden = false;
       $('who').textContent = D.me.name + ' · ' + D.me.role;
       var canEdit = D.me.role !== 'viewer';
-      ['b-new', 'b-rename', 'b-del', 'b-save'].forEach(function (id) { $(id).hidden = !canEdit; });
+      ['b-new', 'b-rename', 'b-del', 'b-save', 'b-cables'].forEach(function (id) { $(id).hidden = !canEdit; });
       fillStages();
     }).catch(function (e) { $('b-unlock').disabled = false; pin = null; showLock('Could not reach the server. ' + e.message); });
   }
@@ -256,6 +268,107 @@
     return c;
   }
 
+  // ---------------- cables ----------------
+  var CABLE = { dmx: { name: 'DMX', col: '#7a4fd6', dash: '6 3' }, powercon: { name: 'powerCON', col: '#d1361f', dash: '' },
+    true1: { name: 'TRUE1', col: '#d1361f', dash: '2 2' }, ethercon: { name: 'etherCON', col: '#1a8a4a', dash: '' },
+    sdi: { name: 'SDI', col: '#1f8ad1', dash: '' }, power: { name: 'Power', col: '#d1361f', dash: '' }, hdmi: { name: 'HDMI', col: '#555', dash: '' }, other: { name: 'Other', col: '#555', dash: '' } };
+  var STD_LEN = [1.5, 3, 5, 10, 15, 20];
+  var DMX_PER_CHAIN = 32, POWER_W_PER_CIRCUIT = 2300;   // 10 A at 230 V
+  var CM = { on: false, kind: 'dmx', anchor: null };     // anchor: {pid} or {src:{label,pos}}
+  function insideDeck(x, y) { return inPoly([x, y], S.stage.outline); }
+  function endPos(c, which) {
+    var pid = which === 'from' ? c.from_placement_id : c.to_placement_id;
+    if (pid) { var p = S.placements.find(function (x) { return x.id === pid; }); return p ? world(p) : null; }
+    return c.src_pos || (c.path && c.path.length ? c.path[which === 'from' ? 0 : c.path.length - 1] : null);
+  }
+  function routeCable(c) {
+    var A = endPos(c, 'from'), B = endPos(c, 'to'); if (!A || !B) return null;
+    var pa = c.from_placement_id && S.placements.find(function (x) { return x.id === c.from_placement_id; });
+    var pb = c.to_placement_id && S.placements.find(function (x) { return x.id === c.to_placement_id; });
+    var deck = num(S.stage.deck_height_m);
+    if (pa && pb && pa.rig_position_id === pb.rig_position_id && rigGeo(rigById(pa.rig_position_id)).kind !== 'area')
+      return { path: [A, B], raw: Math.hypot(B[0] - A[0], B[1] - A[1], B[2] - A[2]) + 0.3 };
+    var fz = function (P) { return insideDeck(P[0], P[1]) ? deck : 0; };
+    var za = fz(A), zb = fz(B), zf = Math.max(za, zb) === deck && insideDeck(A[0], A[1]) && insideDeck(B[0], B[1]) ? deck : 0;
+    var path = [A, [A[0], A[1], zf], [B[0], A[1], zf], [B[0], B[1], zf], B];
+    var raw = 0; for (var i = 1; i < path.length; i++) raw += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2]);
+    if (zf === 0 && (za === deck || zb === deck)) raw += deck;   // over the deck lip
+    return { path: path, raw: raw + 0.5 };
+  }
+  function cableLen(c) {
+    if (c.notes === 'manual' && c.length_m != null) return num(c.length_m);
+    var r = routeCable(c); if (!r) return 0;
+    return Math.ceil(r.raw * (1 + (num(c.slack_pct) || 10) / 100) * 10) / 10;
+  }
+  function refreshCables() { S.cables.forEach(function (c) { var r = routeCable(c); if (r) { c.path = r.path.map(function (P) { return P.map(r2); }); } c.length_m = cableLen(c); }); }
+  function endName(c, which) {
+    var pid = which === 'from' ? c.from_placement_id : c.to_placement_id;
+    if (!pid) return (which === 'from' ? c.from_label : c.to_label) || 'source';
+    var p = S.placements.find(function (x) { return x.id === pid; }); return p ? (p.label || ftype(p.fixture_type_id).model) : '?';
+  }
+  function pieces(L, kind) {
+    var lens = (D.cable_types || []).filter(function (t) { return t.kind === kind && t.length_m; }).map(function (t) { return num(t.length_m); });
+    if (!lens.length) lens = STD_LEN; lens = lens.slice().sort(function (a, b) { return a - b; });
+    var out = [], left = L;
+    while (left > 0.01) { var fit = lens.find(function (l) { return l >= left; }); if (fit) { out.push(fit); break; } out.push(lens[lens.length - 1]); left -= lens[lens.length - 1]; }
+    return out;
+  }
+  function gear() {
+    var cables = {}, couplers = {}, warn = [], dmxSrc = 0, term = 0;
+    S.cables.forEach(function (c) {
+      var ps = pieces(cableLen(c), c.kind);
+      ps.forEach(function (l) { var k = c.kind + '|' + l; cables[k] = (cables[k] || 0) + 1; });
+      if (ps.length > 1) couplers[c.kind] = (couplers[c.kind] || 0) + ps.length - 1;
+    });
+    // chains: follow from each run that starts at a source
+    ['dmx', 'powercon', 'true1'].forEach(function (kind) {
+      var runs = S.cables.filter(function (c) { return c.kind === kind; });
+      runs.filter(function (c) { return !c.from_placement_id; }).forEach(function (start) {
+        var n = 0, watts = 0, cur = start, seen = {};
+        while (cur && cur.to_placement_id && !seen[cur.id]) {
+          seen[cur.id] = 1; n++;
+          var p = S.placements.find(function (x) { return x.id === cur.to_placement_id; });
+          if (p) watts += num(ftype(p.fixture_type_id).power_w) || 0;
+          var nextId = cur.to_placement_id; cur = runs.find(function (c) { return c.from_placement_id === nextId; });
+        }
+        if (kind === 'dmx') { dmxSrc++; term++; if (n > DMX_PER_CHAIN) warn.push('DMX chain from ' + (start.from_label || 'source') + ' has ' + n + ' fixtures — split it (max ' + DMX_PER_CHAIN + ').'); }
+        else if (watts > POWER_W_PER_CIRCUIT) warn.push('Power chain from ' + (start.from_label || 'source') + ' draws ~' + watts + ' W — over a 10 A circuit.');
+      });
+    });
+    return { cables: cables, couplers: couplers, dmxSrc: dmxSrc, term: term, warn: warn };
+  }
+  function gearHtml() {
+    if (!S.cables.length) return '<p class="muted">No cable runs yet. Tap <b>Cables</b> to trace some.</p>';
+    var g = gear(), rows = Object.keys(g.cables).sort().map(function (k) { var a = k.split('|'); return '<tr><td>' + CABLE[a[0]].name + ' ' + a[1] + ' m</td><td>× ' + g.cables[k] + '</td></tr>'; });
+    Object.keys(g.couplers).forEach(function (k) { rows.push('<tr><td>' + CABLE[k].name + ' couplers</td><td>× ' + g.couplers[k] + '</td></tr>'); });
+    if (g.dmxSrc) { rows.push('<tr><td>DMX splitter outputs</td><td>× ' + g.dmxSrc + '</td></tr>'); rows.push('<tr><td>DMX terminators</td><td>× ' + g.term + '</td></tr>'); }
+    var total = S.cables.reduce(function (s, c) { return s + cableLen(c); }, 0);
+    return '<table class="gear">' + rows.join('') + '</table><p class="muted" style="font-size:12px">' + S.cables.length + ' runs · ' + total.toFixed(1) + ' m total, incl. slack. Lengths are rounded up to stock sizes.</p>';
+  }
+  function cableTap(name, q, pid) {
+    if (pid) {
+      if (!CM.anchor) { CM.anchor = { pid: pid }; }
+      else if (CM.anchor.pid === pid) { return; }
+      else {
+        var c = { id: uuid(), kind: CM.kind, from_placement_id: CM.anchor.pid || null, to_placement_id: pid,
+          from_label: CM.anchor.src ? CM.anchor.src.label : null, to_label: null, src_pos: CM.anchor.src ? CM.anchor.src.pos : null, path: [], slack_pct: 10, notes: null };
+        S.cables = S.cables.filter(function (x) { return !(x.kind === c.kind && x.to_placement_id === pid); });   // one feed per fixture per type
+        S.cables.push(c); CM.anchor = { pid: pid }; S.dirty = true;
+      }
+    } else {
+      var V = VIEWS[name], pos = [0, 0, 0]; pos[V.a] = q[0]; pos[V.b] = q[1];
+      if (name === 'top') pos[2] = insideDeck(pos[0], pos[1]) ? num(S.stage.deck_height_m) : 0;
+      var def = { dmx: 'DMX node', powercon: 'Power outlet', true1: 'Power outlet', ethercon: 'Network switch', sdi: 'Video router' }[CM.kind];
+      var label = prompt('Name this starting point:', def); if (!label) return;
+      CM.anchor = { src: { label: label.trim(), pos: pos.map(r2) } };
+    }
+    refreshCables(); render();
+  }
+  function cableHint() {
+    if (!CM.anchor) return 'Tap where the ' + CABLE[CM.kind].name + ' starts (empty space), or a fixture.';
+    return 'From <b>' + esc(CM.anchor.src ? CM.anchor.src.label : (function () { var p = S.placements.find(function (x) { return x.id === CM.anchor.pid; }); return p ? (p.label || ftype(p.fixture_type_id).model) : '?'; })()) + '</b> — tap the next fixture.';
+  }
+
   // ---------------- views ----------------
   var VIEWS = {
     top:   { svg: 'svg-top',   a: 0, b: 1, size: function (d) { return [d.w, d.d]; } },
@@ -281,10 +394,14 @@
   // map world (a,b) to svg coords: X = a, Y = -b
   function P(a, b) { return a.toFixed(3) + ',' + (-b).toFixed(3); }
 
-  function render() { renderPalette(); renderInspector(); renderWarnings(); Object.keys(VIEWS).forEach(renderView); renderSelbar(); $('dirty').hidden = !S.dirty; }
+  function render() { if (S.stage && S.cables.length) refreshCables(); renderCablebar(); renderPalette(); renderInspector(); renderWarnings(); Object.keys(VIEWS).forEach(renderView); renderSelbar(); $('dirty').hidden = !S.dirty; }
+  function renderCablebar() {
+    $('cablebar').hidden = !CM.on; $('b-cables').classList.toggle('on', CM.on);
+    if (CM.on) { $('cb-hint').innerHTML = cableHint(); $('cb-kind').value = CM.kind; }
+  }
   function renderSelbar() {
     var p = S.placements.find(function (x) { return x.id === S.sel; }), bar = $('selbar');
-    bar.hidden = !p; if (!p) return;
+    bar.hidden = !p || CM.on; if (!p || CM.on) return;
     $('sb-name').textContent = p.label || ftype(p.fixture_type_id).model;
     var ro = D.me.role === 'viewer'; $('sb-dup').hidden = ro; $('sb-del').hidden = ro;
   }
@@ -337,11 +454,29 @@
       svg.appendChild(grp);
     });
 
+    // cable runs
+    S.cables.forEach(function (c) {
+      var r = routeCable(c); if (!r) return; var k = CABLE[c.kind] || CABLE.other, sel = c.id === S.selCable;
+      var pts = r.path.map(function (P) { return P[V.a].toFixed(3) + ',' + (-P[V.b]).toFixed(3); }).join(' ');
+      var g = svgEl('g', { 'data-cid': c.id, style: 'cursor:pointer' });
+      g.appendChild(svgEl('polyline', { points: pts, fill: 'none', stroke: 'transparent', 'stroke-width': 14, 'vector-effect': 'non-scaling-stroke' }));
+      g.appendChild(svgEl('polyline', { points: pts, fill: 'none', stroke: k.col, 'stroke-width': sel ? 3.5 : 2, 'stroke-dasharray': k.dash, 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke', opacity: CM.on || sel ? 1 : 0.7 }));
+      if (!c.from_placement_id && c.src_pos) {
+        var sp = c.src_pos, rr = 0.12;
+        g.appendChild(svgEl('rect', { x: sp[V.a] - rr, y: -sp[V.b] - rr, width: 2 * rr, height: 2 * rr, fill: k.col, transform: 'rotate(45 ' + sp[V.a] + ' ' + (-sp[V.b]) + ')' }));
+        g.appendChild(svgEl('text', { x: sp[V.a] + 0.2, y: -sp[V.b] - 0.15, 'font-size': fs * 0.75, fill: k.col }, c.from_label || ''));
+      }
+      svg.appendChild(g);
+    });
+    if (CM.on && CM.anchor && CM.anchor.src) {
+      var ap = CM.anchor.src.pos; svg.appendChild(svgEl('circle', { cx: ap[V.a], cy: -ap[V.b], r: 0.15, fill: 'none', stroke: CABLE[CM.kind].col, 'stroke-width': 2.5, 'vector-effect': 'non-scaling-stroke' }));
+    }
+
     // fixtures (draw selected last)
     var list = S.placements.slice().sort(function (p, q) { return (p.id === S.sel) - (q.id === S.sel); });
     list.forEach(function (p) {
       var ft = ftype(p.fixture_type_id), d = dims(ft), c = world(p), sz = V.size(d), sel = p.id === S.sel;
-      var noStock = !p.stock_item_id;
+      var noStock = !p.stock_item_id; if (CM.on && CM.anchor && CM.anchor.pid === p.id) sel = true;
       var g = svgEl('g', { 'data-pid': p.id, style: 'cursor:move' });
       g.appendChild(svgEl('rect', { x: c[V.a] - sz[0] / 2, y: -(c[V.b] + sz[1] / 2), width: sz[0], height: sz[1], rx: Math.min(sz[0], sz[1]) * 0.15,
         fill: sel ? C('--sel') : C('--fix'), 'fill-opacity': 0.25, stroke: sel ? C('--sel') : (noStock ? C('--bad-ink') : C('--fix')),
@@ -446,6 +581,10 @@
     svg.addEventListener('pointerdown', function (ev) {
       var q = svgPoint(svg, ev), canEdit = D.me.role !== 'viewer';
       var fx = ev.target.closest('[data-pid]');
+      if (CM.on && canEdit) { cableTap(name, q, fx ? fx.getAttribute('data-pid') : null); return; }
+      var cb = ev.target.closest('[data-cid]');
+      if (cb && !fx) { S.selCable = cb.getAttribute('data-cid'); S.sel = null; S.armed = null; render(); return; }
+      S.selCable = null;
       if (fx) {
         S.sel = fx.getAttribute('data-pid'); S.armed = null;
         if (canEdit) { drag = { name: name, svg: svg, pid: S.sel, moved: false }; svg.setPointerCapture(ev.pointerId); }
@@ -462,7 +601,7 @@
       var res = resolve(p, rg, want, ev.shiftKey);
       if (res && (res.t !== num(p.offset_m) || res.t2 !== num(p.offset2_m))) { p.offset_m = res.t; p.offset2_m = res.t2; drag.moved = true; S.dirty = true; Object.keys(VIEWS).forEach(renderView); $('dirty').hidden = false; }
     });
-    svg.addEventListener('pointerup', function () { if (drag && drag.moved) render(); drag = null; });
+    svg.addEventListener('pointerup', function () { if (drag && drag.moved) { refreshCables(); render(); } drag = null; });
   });
 
   function placeAt(name, q) {
@@ -499,7 +638,7 @@
     if (!S.sel || $('app').hidden || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || D.me.role === 'viewer') return;
     var p = S.placements.find(function (x) { return x.id === S.sel; }); if (!p) return;
     if (e.key === 'Delete' || e.key === 'Backspace') { removeSel(); e.preventDefault(); return; }
-    if (e.key === 'Escape') { S.sel = null; S.armed = null; render(); return; }
+    if (e.key === 'Escape') { S.sel = null; S.armed = null; S.selCable = null; render(); return; }
     var step = e.shiftKey ? 0.01 : GRID, dt = 0, dt2 = 0;
     if (e.key === 'ArrowRight') dt = step; else if (e.key === 'ArrowLeft') dt = -step;
     else if (e.key === 'ArrowUp') dt2 = step; else if (e.key === 'ArrowDown') dt2 = -step; else return;
@@ -545,6 +684,7 @@
       var kg = S.placements.filter(function (p) { return p.rig_position_id === rg.id; }).reduce(function (s, p) { return s + (num(ftype(p.fixture_type_id).weight_kg) || 0); }, 0);
       if (kg > num(rg.max_load_kg)) w.push(rg.name + ' is over its load limit: ' + kg.toFixed(1) + ' kg of ' + rg.max_load_kg + ' kg.');
     });
+    if (S.cables.length) w = w.concat(gear().warn);
     $('warnbar').innerHTML = w.map(function (t) { return '<div class="note bad">' + esc(t) + '</div>'; }).join('');
   }
   var flashT = null;
@@ -556,11 +696,14 @@
   // ---------------- inspector ----------------
   function renderInspector() {
     var box = $('inspector'), p = S.placements.find(function (x) { return x.id === S.sel; });
+    var cs = S.cables.find(function (x) { return x.id === S.selCable; });
+    if (cs && S.layout) { renderCableInspector(box, cs); return; }
     if (!S.layout) { box.innerHTML = '<h2>Start</h2><p class="muted">Pick a layout above, or make a new one.</p>'; return; }
     if (!p) {
       var kg = 0; S.placements.forEach(function (q) { kg += num(ftype(q.fixture_type_id).weight_kg) || 0; });
       box.innerHTML = '<h2>' + esc(S.layout.name) + '</h2><p class="muted">' + S.placements.length + ' fixtures · ' + kg.toFixed(1) + ' kg rigged</p>' +
         (D.me.role !== 'viewer' && S.placements.length ? '<div class="row"><button type="button" id="b-autopatch">Auto-patch</button></div>' : '') +
+        '<h2>Cable gear</h2>' + gearHtml() +
         (S.armed ? '<p class="note ok">Placing <b>' + esc(ftype(S.armed).model) + '</b> — tap a rigging position. Esc to stop.</p>' : '<p class="muted">Tap a fixture to edit it.</p>') +
         '<h2>Rigging positions</h2>' + S.stage.rig_positions.map(function (rg) {
           var n = S.placements.filter(function (q) { return q.rig_position_id === rg.id; });
@@ -627,6 +770,24 @@
       q.offset_m = res.t; q.offset2_m = res.t2; assignStock(q); S.placements.push(q); S.sel = q.id; upd();
     };
   }
+  function renderCableInspector(box, c) {
+    var r = routeCable(c), auto = r ? Math.ceil(r.raw * (1 + (num(c.slack_pct) || 10) / 100) * 10) / 10 : 0, ro = D.me.role === 'viewer' ? ' disabled' : '';
+    var opts = Object.keys(CABLE).filter(function (k) { return ['power', 'hdmi', 'other'].indexOf(k) < 0 || k === c.kind; }).map(function (k) { return '<option value="' + k + '"' + (k === c.kind ? ' selected' : '') + '>' + CABLE[k].name + '</option>'; }).join('');
+    box.innerHTML = '<h2>' + CABLE[c.kind].name + ' run</h2><p>' + esc(endName(c, 'from')) + ' → ' + esc(endName(c, 'to')) + '</p>' +
+      '<label>Type</label><select id="c-kind"' + ro + '>' + opts + '</select>' +
+      '<div class="kv"><div><label>Length (m)</label><input id="c-len" type="number" step="0.5" value="' + cableLen(c).toFixed(1) + '"' + ro + '></div>' +
+      '<div><label>Slack %</label><input id="c-slack" type="number" step="5" value="' + (num(c.slack_pct) || 10) + '"' + ro + '></div></div>' +
+      '<p class="muted" style="font-size:12px">' + (c.notes === 'manual' ? 'Manual length. Traced route would be ' + auto.toFixed(1) + ' m. <button type="button" class="link" id="c-auto">Use traced</button>' : 'Traced along the rig, down to the deck/floor and across, plus slack.') + '</p>' +
+      '<p>Gear: ' + pieces(cableLen(c), c.kind).map(function (l) { return l + ' m'; }).join(' + ') + '</p>' +
+      (ro ? '' : '<div class="row"><button type="button" id="c-del">Remove run</button></div>');
+    if (ro) return;
+    var upd = function () { S.dirty = true; refreshCables(); render(); };
+    $('c-kind').onchange = function () { c.kind = this.value; upd(); };
+    $('c-len').onchange = function () { c.length_m = num(this.value); c.notes = 'manual'; S.dirty = true; render(); };
+    $('c-slack').onchange = function () { c.slack_pct = num(this.value) || 0; upd(); };
+    if ($('c-auto')) $('c-auto').onclick = function () { c.notes = null; upd(); };
+    $('c-del').onclick = function () { S.cables = S.cables.filter(function (x) { return x.id !== c.id; }); S.selCable = null; S.dirty = true; render(); };
+  }
   function extentAlongSafe(p, g) { return g.kind === 'line' ? extentAlong(p, g) : dims(ftype(p.fixture_type_id)).w; }
   var lastRemoved = null;
   function removeSel() {
@@ -645,6 +806,13 @@
   }
 
   $('sb-del').onclick = removeSel;
+  $('b-cables').onclick = function () {
+    if (!S.layout) { flash('Open a layout first.'); return; }
+    CM.on = !CM.on; CM.anchor = null; S.armed = null; S.sel = null; S.selCable = null; render();
+  };
+  $('cb-kind').onchange = function () { CM.kind = this.value; CM.anchor = null; render(); };
+  $('cb-break').onclick = function () { CM.anchor = null; render(); };
+  $('cb-done').onclick = function () { CM.on = false; CM.anchor = null; render(); };
   $('sb-done').onclick = function () { S.sel = null; render(); };
   $('sb-dup').onclick = function () { var b = $('i-dup'); if (b) b.click(); };
 
@@ -693,7 +861,7 @@
     if (!id) { S.layout = null; S.placements = []; render(); return; }
     call('layout_get', { layout_id: id }).then(function (r) {
       if (!r.ok) { flash(errText(r), 'bad'); return; }
-      S.layout = r.layout; S.placements = r.placements; S.cables = r.cable_runs; S.sel = null; S.dirty = false;
+      S.layout = r.layout; S.placements = r.placements; S.cables = r.cable_runs.map(function (c) { if (!c.from_placement_id && c.path && c.path.length) c.src_pos = c.path[0]; return c; }); S.sel = null; S.selCable = null; CM.on = false; CM.anchor = null; S.dirty = false;
       $('b-rename').disabled = $('b-del').disabled = $('b-save').disabled = false;
       render();
     }).catch(function (e) { flash('Could not load the layout. ' + e.message, 'bad'); });
@@ -729,6 +897,7 @@
   function save(extra) {
     if (!S.layout) return;
     $('b-save').disabled = true;
+    refreshCables();
     var body = Object.assign({ layout_id: S.layout.id, expected_updated_at: S.layout.updated_at, placements: S.placements, cable_runs: S.cables }, extra || {});
     call('layout_save', body).then(function (r) {
       $('b-save').disabled = false;
