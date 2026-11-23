@@ -69,6 +69,10 @@
   #cablebar { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:center;
     background:var(--bg); border:2px solid var(--line); border-radius:12px; padding:6px 8px; box-shadow:0 4px 16px rgba(0,0,0,.18); z-index:6; max-width:calc(100% - 16px); font-size:13px; }
   #cablebar .hint { color:var(--muted); }
+  .layer { position:absolute; left:6px; top:22px; display:flex; gap:4px; align-items:center; z-index:4; font-size:11px; }
+  .layer button { width:28px; height:28px; padding:0; border-radius:8px; font-size:13px; line-height:1; background:var(--bg); }
+  .layer span { background:var(--bg); border-radius:6px; padding:2px 6px; max-width:44vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .layer span.on { background:var(--warn-bg); color:var(--warn-ink); font-weight:700; }
   .zoom { position:absolute; right:6px; top:6px; display:flex; gap:4px; z-index:4; }
   .zoom button { width:32px; height:32px; padding:0; border-radius:8px; font-size:16px; line-height:1; background:var(--bg); }
   .legend { position:absolute; left:8px; bottom:6px; font-size:10px; color:var(--muted); pointer-events:none; display:flex; gap:8px; flex-wrap:wrap; max-width:70%; }
@@ -144,8 +148,8 @@
     </aside>
     <section id="views">
       <div id="tabs"><button data-v="top" type="button">Top</button><button data-v="front" type="button">Front</button><button data-v="side" type="button">Side</button></div>
-      <div class="view v-top on" data-v="top"><span class="vt">Top · audience at bottom</span><svg id="svg-top"></svg><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-top"></div></div>
-      <div class="view v-front" data-v="front"><span class="vt">Front · from the audience</span><svg id="svg-front"></svg><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-front"></div></div>
+      <div class="view v-top on" data-v="top"><span class="vt">Top · audience at bottom</span><svg id="svg-top"></svg><div class="layer"><button type="button" data-l="-1" aria-label="Lower layer" title="Lower layer">▼</button><button type="button" data-l="1" aria-label="Higher layer" title="Higher layer">▲</button><span id="ly-top">All</span></div><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-top"></div></div>
+      <div class="view v-front" data-v="front"><span class="vt">Front · from the audience</span><svg id="svg-front"></svg><div class="layer"><button type="button" data-l="-1" aria-label="Towards the audience" title="Towards the audience">◀</button><button type="button" data-l="1" aria-label="Further upstage" title="Further upstage">▶</button><span id="ly-front">All</span></div><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-front"></div></div>
       <div id="cablebar" hidden>
         <select id="cb-kind" aria-label="Cable type"><option value="dmx">DMX</option><option value="powercon">Power (powerCON)</option><option value="true1">Power (TRUE1)</option><option value="ethercon">Data (etherCON)</option><option value="sdi">SDI</option></select>
         <span class="hint" id="cb-hint"></span>
@@ -153,7 +157,7 @@
         <button type="button" class="primary" id="cb-done">Done</button>
       </div>
       <div id="selbar" hidden><span class="nm" id="sb-name"></span><button type="button" id="sb-dup">Duplicate</button><button type="button" class="danger" id="sb-del">Remove</button><button type="button" id="sb-done" aria-label="Deselect">Done</button></div>
-      <div class="view v-side" data-v="side"><span class="vt">Side · audience on the left</span><svg id="svg-side"></svg><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-side"></div></div>
+      <div class="view v-side" data-v="side"><span class="vt">Side · audience on the left</span><svg id="svg-side"></svg><div class="layer"><button type="button" data-l="-1" aria-label="Towards stage left" title="Towards stage left">◀</button><button type="button" data-l="1" aria-label="Towards stage right" title="Towards stage right">▶</button><span id="ly-side">All</span></div><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-side"></div></div>
     </section>
     <aside class="right" id="inspector"></aside>
   </main>
@@ -433,6 +437,40 @@
     if (pt && c0) z.c = [pt[0] + (c0[0] - pt[0]) * k0 / z.k, pt[1] + (c0[1] - pt[1]) * k0 / z.k];
     applyZoom(name);
   }
+  // ---------------- layers (working planes) ----------------
+  var LAX = { top: 2, front: 1, side: 0 }, LNAME = { top: ['height', 'All heights'], front: ['depth', 'All depths'], side: ['across', 'Whole width'] };
+  var LV = { top: -1, front: -1, side: -1 };
+  function rigRange(rg, ax) {
+    var g = rigGeo(rg);
+    if (g.kind === 'area') { if (ax === 2) return [g.z, g.z]; var vs = g.poly.map(function (p) { return p[ax]; }); return [Math.min.apply(null, vs), Math.max.apply(null, vs)]; }
+    if (g.kind === 'wall') { var B = [g.A[0] + g.H[0] * g.W, g.A[1] + g.H[1] * g.W, g.A[2] + g.Hgt]; return [Math.min(g.A[ax], B[ax]), Math.max(g.A[ax], B[ax])]; }
+    var b = g.kind === 'point' ? g.A : g.B; return [Math.min(g.A[ax], b[ax]), Math.max(g.A[ax], b[ax])];
+  }
+  function levels(name) {
+    var ax = LAX[name], pts = [];
+    S.stage.rig_positions.forEach(function (rg) { var r = rigRange(rg, ax); if (r[1] - r[0] < 0.4) pts.push({ v: (r[0] + r[1]) / 2, n: rg.name }); });
+    pts.sort(function (a, b) { return a.v - b.v; });
+    var out = [];
+    pts.forEach(function (p) { var last = out[out.length - 1]; if (last && p.v - last.hi < 0.35) { last.hi = p.v; last.names.push(p.n); } else out.push({ lo: p.v, hi: p.v, names: [p.n] }); });
+    return out;
+  }
+  function curLevel(name) { var L = levels(name); return LV[name] >= 0 && LV[name] < L.length ? L[LV[name]] : null; }
+  function rigActive(name, rg) {
+    var L = curLevel(name); if (!L) return true;
+    var r = rigRange(rg, LAX[name]); return r[1] >= L.lo - 0.3 && r[0] <= L.hi + 0.3;
+  }
+  function rigActiveAll(rg) { return ['top', 'front', 'side'].every(function (n) { return rigActive(n, rg); }); }
+  function renderLayer(name) {
+    var L = curLevel(name), el = $('ly-' + name); if (!el) return;
+    if (!L) { el.textContent = LNAME[name][1]; el.className = ''; return; }
+    var unit = name === 'top' ? (L.lo === L.hi ? fmt(L.lo) : fmt(L.lo) + '–' + fmt(L.hi)) + ' m up' : (name === 'front' ? 'y ' : 'x ') + (L.lo === L.hi ? fmt(L.lo) : fmt(L.lo) + '…' + fmt(L.hi)) + ' m';
+    el.textContent = unit + ' · ' + L.names.join(', '); el.className = 'on';
+  }
+  function stepLayer(name, d) {
+    var n = levels(name).length, i = LV[name] + d;
+    if (i < -1) i = n - 1; if (i >= n) i = -1;   // wraps through "All"
+    LV[name] = i; render();
+  }
   function renderLegend(name) {
     var kinds = {}; S.cables.forEach(function (c) { kinds[c.kind] = 1; });
     var el = $('lg-' + name); if (!el) return;
@@ -441,7 +479,7 @@
   function renderView(name) {
     var V = VIEWS[name], svg = $(V.svg), B = stageBounds(), pad = 0.8;
     var ra = B[V.a], rb = B[V.b];
-    svg._base = [ra[0] - pad, -(rb[1] + pad), ra[1] - ra[0] + 2 * pad, rb[1] - rb[0] + 2 * pad]; applyZoom(name); renderLegend(name);
+    svg._base = [ra[0] - pad, -(rb[1] + pad), ra[1] - ra[0] + 2 * pad, rb[1] - rb[0] + 2 * pad]; applyZoom(name); renderLegend(name); renderLayer(name);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.innerHTML = '';
     var fs = Math.max(0.16, (ra[1] - ra[0]) / 60);
@@ -465,7 +503,8 @@
     S.stage.rig_positions.forEach(function (rg) {
       if (rg.kind === 'floor') return;
       var g = rigGeo(rg), col = rg.is_placeholder ? C('--ph') : C('--rig'), dash = rg.is_placeholder ? '6 4' : '';
-      var grp = svgEl('g', { 'data-rig': rg.id, style: 'cursor:' + (S.armed ? 'copy' : 'default') });
+      var act = rigActiveAll(rg);
+      var grp = svgEl('g', { 'data-rig': rg.id, style: 'cursor:' + (S.armed ? 'copy' : 'default') + (act ? '' : ';pointer-events:none'), opacity: act ? 1 : 0.18 });
       var a1, b1, a2, b2;
       if (g.kind === 'wall') {
         var A0 = [g.A[0], g.A[1], g.A[2]], B0 = [g.A[0] + g.H[0] * g.W, g.A[1] + g.H[1] * g.W, g.A[2] + g.Hgt];
@@ -509,7 +548,8 @@
     list.forEach(function (p) {
       var ft = ftype(p.fixture_type_id), d = dims(ft), c = world(p), sz = V.size(d), sel = p.id === S.sel;
       var noStock = !p.stock_item_id; if (CM.on && CM.anchor && CM.anchor.pid === p.id) sel = true;
-      var g = svgEl('g', { 'data-pid': p.id, style: 'cursor:move' });
+      var pact = rigActiveAll(rigById(p.rig_position_id)) || p.id === S.sel;
+      var g = svgEl('g', { 'data-pid': p.id, style: 'cursor:move' + (pact ? '' : ';pointer-events:none'), opacity: pact ? 1 : 0.2 });
       g.appendChild(svgEl('rect', { x: c[V.a] - sz[0] / 2, y: -(c[V.b] + sz[1] / 2), width: sz[0], height: sz[1], rx: Math.min(sz[0], sz[1]) * 0.15,
         fill: catCol(ft), 'fill-opacity': sel ? 0.7 : 0.45, stroke: sel ? C('--ink') : (noStock ? C('--bad-ink') : catCol(ft)),
         'stroke-width': sel ? 3 : 1.5, 'stroke-dasharray': d.known ? '' : '3 3', 'vector-effect': 'non-scaling-stroke' }));
@@ -565,7 +605,12 @@
       return { t: u, t2: v };
     }
     var a = [g.A[V.a], g.A[V.b]], b = [g.B[V.a], g.B[V.b]], vx = b[0] - a[0], vy = b[1] - a[1], L = vx * vx + vy * vy;
-    if (L < 1e-6) return p ? null : { t: g.len / 2, t2: null };
+    if (L < 1e-6) {
+      if (p) return null;
+      var lv = curLevel(name), ax = LAX[name];
+      if (lv && Math.abs(g.dir[ax]) > 0.5) { var tt = ((lv.lo + lv.hi) / 2 - g.A[ax]) / g.dir[ax]; return { t: Math.max(0, Math.min(g.len, tt)), t2: null }; }
+      return { t: g.len / 2, t2: null };
+    }
     var f = ((q[0] - a[0]) * vx + (q[1] - a[1]) * vy) / L;
     return { t: f * g.len, t2: null };
   }
@@ -577,7 +622,7 @@
     if (g.kind === 'point') return { t: 0, t2: null };
     if (g.kind === 'line') {
       var e = extentAlong(p, g), lo = Math.min(e / 2, g.len / 2), hi = Math.max(g.len - e / 2, g.len / 2);
-      var ok = function (t) { return t >= lo - 1e-6 && t <= hi + 1e-6 && others.every(function (o) { return Math.abs(t - num(o.offset_m)) >= (e + extentAlong(o, g)) / 2 + clr - 1e-6; }); };
+      var ok = function (t) { return t >= lo - 0.002 && t <= hi + 0.002 && others.every(function (o) { return Math.abs(t - num(o.offset_m)) >= (e + extentAlong(o, g)) / 2 + clr - 1e-6; }); };
       var t0 = Math.max(lo, Math.min(hi, snap(want.t)));
       var cands = [t0];
       others.forEach(function (o) { var gap = (e + extentAlong(o, g)) / 2 + clr; cands.push(num(o.offset_m) - gap, num(o.offset_m) + gap); });
@@ -612,6 +657,9 @@
     var svg = $(VIEWS[name].svg), ptrs = {}, pinch = null, pan = null;
     function svgXY(ev) { var pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; var q = pt.matrixTransform(svg.getScreenCTM().inverse()); return [q.x, q.y]; }
     svg.addEventListener('wheel', function (ev) { ev.preventDefault(); zoomAt(name, ev.deltaY < 0 ? 1.2 : 1 / 1.2, svgXY(ev)); }, { passive: false });
+    svg.parentNode.querySelector('.layer').addEventListener('click', function (ev) {
+      var d = ev.target.getAttribute('data-l'); if (d) stepLayer(name, +d);
+    });
     svg.parentNode.querySelector('.zoom').addEventListener('click', function (ev) {
       var z = ev.target.getAttribute('data-z'); if (!z) return;
       if (z === 'fit') { ZV[name].k = 1; ZV[name].c = null; applyZoom(name); } else zoomAt(name, z === 'in' ? 1.5 : 1 / 1.5, ZV[name].c);
@@ -684,7 +732,7 @@
     // finger-sized tolerance: ~28 screen px in world metres, at least 0.35m
     var svg = $(VIEWS[name].svg), m = svg.getScreenCTM(), tol = Math.min(0.6, Math.max(0.35, 28 / Math.abs(m ? m.a : 50)));
     S.stage.rig_positions.forEach(function (rg) {
-      if (!allowed(ft, rg)) return;
+      if (!allowed(ft, rg) || !rigActiveAll(rg)) return;
       var dd = rigDist(name, rg, q);
       if (rg.kind === 'floor') { if (dd < tol && (!floor || dd < floor.d)) floor = { rg: rg, d: dd }; return; }
       if (dd < tol && (!best || dd < best.d)) best = { rg: rg, d: dd };
@@ -923,6 +971,7 @@
   function setStage(id) {
     S.stage = D.stages.find(function (s) { return s.id === id; }); store('stage_designer_stage', id);
     S.layout = null; S.placements = []; S.cables = []; S.sel = null; S.dirty = false;
+    LV = { top: -1, front: -1, side: -1 }; ZV = { top: { k: 1, c: null }, front: { k: 1, c: null }, side: { k: 1, c: null } };
     fillLayouts();
   }
   function fillLayouts(selectId) {
