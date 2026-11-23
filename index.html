@@ -78,6 +78,24 @@
   .legend { position:absolute; left:8px; bottom:6px; font-size:10px; color:var(--muted); pointer-events:none; display:flex; gap:8px; flex-wrap:wrap; max-width:70%; }
   .legend i { display:inline-block; width:14px; height:0; border-top:2px solid; vertical-align:middle; margin-right:3px; }
   .sw { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+  #stockview { overflow:auto; padding:8px 12px 40px; }
+  #stockview[hidden] { display:none; }
+  #app.stock main { display:none; } #app.stock #sel-stage, #app.stock #sel-layout, #app.stock #b-cables, #app.stock #b-new, #app.stock #b-rename, #app.stock #b-del, #app.stock #b-save, #app.stock #dirty { display:none; }
+  #b-stock.on { background:var(--ink); color:var(--bg); }
+  .prog { height:10px; background:var(--soft2); border-radius:6px; overflow:hidden; margin:6px 0 4px; } .prog i { display:block; height:100%; background:var(--ok-ink); }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; } .chips button { padding:4px 10px; font-weight:500; } .chips button.on { background:var(--ink); color:var(--bg); }
+  .grp { border:2px solid var(--soft2); border-radius:10px; margin:10px 0; }
+  .grp > summary { padding:8px 10px; cursor:pointer; font-weight:700; list-style:none; display:flex; justify-content:space-between; gap:8px; }
+  .grp > summary small { font-weight:500; color:var(--muted); }
+  .item { border-top:1px solid var(--soft2); padding:8px 10px; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:4px 10px; align-items:end; }
+  .item .hd { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:center; gap:8px; font-weight:700; }
+  .item label { margin:2px 0; } .item input, .item select { width:100%; }
+  .item .found { display:flex; align-items:center; gap:6px; font-weight:700; } .item .found input { width:22px; height:22px; }
+  .item.done { background:var(--ok-bg); } .item.bad { background:var(--bad-bg); }
+  .saved { font-size:11px; color:var(--ok-ink); font-weight:500; }
+  .dims { padding:8px 10px; border-top:1px solid var(--soft2); display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:4px 10px; background:var(--soft); }
+  .plist { margin:0; padding:0; list-style:none; } .plist li { display:flex; justify-content:space-between; gap:6px; padding:3px 0; border-bottom:1px solid var(--soft2); cursor:pointer; font-size:13px; }
+  .plist li.sel { font-weight:700; } .plist .ad { color:var(--muted); white-space:nowrap; }
   #b-cables.on { background:var(--ink); color:var(--bg); }
   .gear td { padding:2px 6px 2px 0; } .gear td:last-child { text-align:right; font-weight:700; }
   #selbar .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:38vw; padding:0 4px; }
@@ -129,6 +147,7 @@
     <h1>Stage Designer</h1>
     <select id="sel-stage" aria-label="Stage"></select>
     <select id="sel-layout" aria-label="Layout"></select>
+    <button id="b-stock" type="button">Stock</button>
     <button id="b-cables" type="button">Cables</button>
     <button id="b-new" type="button">New layout</button>
     <button id="b-rename" type="button">Rename</button>
@@ -161,6 +180,7 @@
     </section>
     <aside class="right" id="inspector"></aside>
   </main>
+  <section id="stockview" hidden></section>
 </div>
 
 <script>
@@ -751,7 +771,7 @@
   function usedStock() { var u = {}; S.placements.forEach(function (p) { if (p.stock_item_id) u[p.stock_item_id] = p.id; }); return u; }
   function assignStock(p) {
     var used = usedStock();
-    var s = stock.find(function (i) { return i.fixture_type_id === p.fixture_type_id && i.status === 'in_service' && !used[i.id]; });
+    var s = unitsOf(p.fixture_type_id).find(function (i) { return i.status === 'in_service' && !used[i.id]; });
     if (s) { p.stock_item_id = s.id; p.universe = s.default_universe; p.address = s.default_address; p.mode = s.default_mode; }
     else { p.stock_item_id = null; var ft = ftype(p.fixture_type_id); p.mode = ft.dmx_modes[0] ? ft.dmx_modes[0].name : null; }
   }
@@ -828,12 +848,18 @@
         (D.me.role !== 'viewer' && S.placements.length ? '<div class="row"><button type="button" id="b-autopatch">Auto-patch</button></div>' : '') +
         '<h2>Cable gear</h2>' + gearHtml() +
         (S.armed ? '<p class="note ok">Placing <b>' + esc(ftype(S.armed).model) + '</b> — tap a rigging position. Esc to stop.</p>' : '<p class="muted">Tap a fixture to edit it.</p>') +
-        '<h2>Rigging positions</h2>' + S.stage.rig_positions.map(function (rg) {
-          var n = S.placements.filter(function (q) { return q.rig_position_id === rg.id; });
+        '<h2>Placed fixtures</h2>' + (S.placements.length ? '' : '<p class="muted">None yet.</p>') + S.stage.rig_positions.map(function (rg) {
+          var n = S.placements.filter(function (q) { return q.rig_position_id === rg.id; })
+            .sort(function (a, b) { return ((num(a.offset_m) || 0) - (num(b.offset_m) || 0)) || ((num(a.offset2_m) || 0) - (num(b.offset2_m) || 0)); });
+          if (!n.length) return '';
           var w = n.reduce(function (s, q) { return s + (num(ftype(q.fixture_type_id).weight_kg) || 0); }, 0);
-          return '<div>' + esc(rg.name) + (rg.is_placeholder ? ' <span class="muted">(TBC)</span>' : '') + ' <span class="muted">· ' + n.length + ' · ' + w.toFixed(1) + ' kg</span></div>';
+          return '<div style="margin-top:8px"><b>' + esc(rg.name) + '</b>' + (rg.is_placeholder ? ' <span class="muted">(TBC)</span>' : '') + ' <span class="muted">· ' + n.length + ' · ' + w.toFixed(1) + ' kg</span></div><ul class="plist">' +
+            n.map(function (q) { var ft = ftype(q.fixture_type_id), si = stockById(q.stock_item_id);
+              return '<li data-pick="' + q.id + '"><span><i class="sw" style="background:' + catCol(ft) + '"></i>' + esc(q.label || ft.model) +
+                (si ? ' <span class="muted">· ' + esc(unitName(si)) + '</span>' : ' <span style="color:var(--bad-ink)">· no stock</span>') + '</span><span class="ad">' + (q.universe && q.address ? q.universe + '/' + q.address : '—') + '</span></li>'; }).join('') + '</ul>';
         }).join('');
       if ($('b-autopatch')) $('b-autopatch').onclick = autoPatch;
+      Array.prototype.forEach.call(box.querySelectorAll('[data-pick]'), function (li) { li.onclick = function () { S.sel = li.getAttribute('data-pick'); S.armed = null; render(); }; });
       return;
     }
     var ft = ftype(p.fixture_type_id), rg = rigById(p.rig_position_id), g = rigGeo(rg), d = dims(ft), used = usedStock(), ro = D.me.role === 'viewer' ? ' disabled' : '';
@@ -960,6 +986,119 @@
     flash('Patched ' + list.length + ' fixtures from ' + list[0].universe + '/' + list[0].address + ' to ' + u + '/' + (a - 1) + ', in rig order (left to right along each position).' +
       (rolled ? ' Some ran over into universe ' + u + ' so no fixture is split across universes.' : '') + (skipped ? ' Skipped ' + skipped + ' with no DMX (e.g. LED panels).' : '') + ' Hit Save to keep it.', 'ok');
   }
+
+  // ---------------- stock take ----------------
+  var API_STOCK = API.replace(/stage_api$/, 'stage_stock');
+  var ST = { on: false, filter: 'all', q: '', open: {}, usage: {} };
+  var STATUS = [['in_service', 'Working'], ['faulty', 'Faulty'], ['in_repair', 'In repair'], ['missing', 'Missing'], ['retired', 'Retired']];
+  function callStock(action, data) {
+    return fetch(API_STOCK, { method: 'POST', cache: 'no-store', headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_key: key, p_pin: pin, p_action: action, p_data: data || {} }) }).then(function (r) { return r.json(); });
+  }
+  function rowNo(si) { var m = String(si.source_ref || '').match(/row (\d+)/); return m ? +m[1] : 999; }
+  function unitsOf(ftid) { return stock.filter(function (x) { return x.fixture_type_id === ftid; }).sort(function (a, b) { return (rowNo(a) - rowNo(b)) || String(a.created_at).localeCompare(String(b.created_at)); }); }
+  function unitName(si) { var u = unitsOf(si.fixture_type_id), i = u.indexOf(si); return si.asset_tag ? si.asset_tag : 'Unit ' + (i + 1); }
+  function recount() { D.fixture_types.forEach(function (f) { var u = unitsOf(f.id); f.total = u.length; f.in_service = u.filter(function (x) { return x.status === 'in_service'; }).length; }); }
+  function itemMatches(si) {
+    var f = ST.filter;
+    if (f === 'todo' && si.found) return false;
+    if (f === 'bad' && ['faulty', 'in_repair', 'missing'].indexOf(si.status) < 0) return false;
+    if (f === 'noplan' && si.planned_location) return false;
+    if (ST.q) { var ft = ftype(si.fixture_type_id), hay = [ft.model, ft.manufacturer, si.asset_tag, si.found_at, si.planned_location, si.planned_use, si.notes, si.home_location].join(' ').toLowerCase(); if (hay.indexOf(ST.q) < 0) return false; }
+    return true;
+  }
+  function renderStock() {
+    var box = $('stockview'), ro = D.me.role === 'viewer' ? ' disabled' : '';
+    var all = stock, found = all.filter(function (x) { return x.found; }).length;
+    var nBad = all.filter(function (x) { return ['faulty', 'in_repair'].indexOf(x.status) >= 0; }).length, nMiss = all.filter(function (x) { return x.status === 'missing'; }).length;
+    var nPlan = all.filter(function (x) { return x.planned_location; }).length;
+    var places = {}; D.stages.forEach(function (s) { places[s.name] = 1; s.rig_positions.forEach(function (r) { places[r.name] = 1; }); }); ['Store Room', 'Repair pile', 'Bridge', 'Booth'].forEach(function (x) { places[x] = 1; });
+    var html = '<h2>Lighting stock take</h2>' +
+      '<div class="prog"><i style="width:' + (all.length ? Math.round(100 * found / all.length) : 0) + '%"></i></div>' +
+      '<p class="muted">Found ' + found + ' of ' + all.length + ' · faulty/in repair ' + nBad + ' · missing ' + nMiss + ' · planned location set ' + nPlan + '</p>' +
+      '<p class="muted" style="font-size:12px">Tick each unit when you find it, set its condition and where it actually was, then where it should live. Changes save as you go.</p>' +
+      '<div class="chips">' + [['all', 'All'], ['todo', 'To find'], ['bad', 'Faulty / missing'], ['noplan', 'No planned location']].map(function (c) { return '<button type="button" data-f="' + c[0] + '" class="' + (ST.filter === c[0] ? 'on' : '') + '">' + c[1] + '</button>'; }).join('') +
+      '<input id="st-q" placeholder="Search…" value="' + esc(ST.q) + '" style="flex:1;min-width:120px"></div>' +
+      '<datalist id="st-places">' + Object.keys(places).map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>';
+    D.fixture_types.forEach(function (ft) {
+      var units = unitsOf(ft.id); if (!units.length && ST.filter !== 'all') return;
+      var shown = units.filter(itemMatches); if (!shown.length && (ST.filter !== 'all' || ST.q)) return;
+      var f = units.filter(function (x) { return x.found; }).length, open = ST.open[ft.id] != null ? ST.open[ft.id] : (ft.category !== 'led_panel' || ST.filter !== 'all');
+      var modes = (ft.dmx_modes || []).map(function (m) { return m.name; });
+      html += '<details class="grp" data-ft="' + ft.id + '"' + (open ? ' open' : '') + '><summary><span><i class="sw" style="background:' + catCol(ft) + '"></i>' + esc(ft.model) +
+        ' <small>' + esc(ft.manufacturer || '') + '</small></span><small>' + f + '/' + units.length + ' found · ' + ft.in_service + ' working</small></summary>' +
+        '<div class="dims"><div><label>Width m</label><input data-dim="width_m" type="number" step="0.01" value="' + (ft.width_m == null ? '' : ft.width_m) + '"' + ro + '></div>' +
+        '<div><label>Height m</label><input data-dim="height_m" type="number" step="0.01" value="' + (ft.height_m == null ? '' : ft.height_m) + '"' + ro + '></div>' +
+        '<div><label>Depth m</label><input data-dim="depth_m" type="number" step="0.01" value="' + (ft.depth_m == null ? '' : ft.depth_m) + '"' + ro + '></div>' +
+        '<div><label>Weight kg</label><input data-dim="weight_kg" type="number" step="0.1" value="' + (ft.weight_kg == null ? '' : ft.weight_kg) + '"' + ro + '></div>' +
+        '<div><label>Power W</label><input data-dim="power_w" type="number" step="1" value="' + (ft.power_w == null ? '' : ft.power_w) + '"' + ro + '></div></div>' +
+        shown.map(function (si) {
+          var bad = ['faulty', 'in_repair', 'missing'].indexOf(si.status) >= 0, use = ST.usage[si.id];
+          return '<div class="item' + (bad ? ' bad' : si.found ? ' done' : '') + '" data-si="' + si.id + '">' +
+            '<div class="hd"><span>' + esc(unitName(si)) + ' <span class="muted" style="font-weight:500">· listed: ' + esc(si.home_location || '—') + '</span></span>' +
+            '<label class="found"><input type="checkbox" data-k="found"' + (si.found ? ' checked' : '') + ro + '> Found</label></div>' +
+            '<div><label>Condition</label><select data-k="status"' + ro + '>' + STATUS.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === si.status ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+            '<div><label>Found at</label><input data-k="found_at" list="st-places" value="' + esc(si.found_at || '') + '"' + ro + '></div>' +
+            '<div><label>Planned location</label><input data-k="planned_location" list="st-places" value="' + esc(si.planned_location || '') + '"' + ro + '></div>' +
+            '<div><label>Planned use</label><input data-k="planned_use" value="' + esc(si.planned_use || '') + '"' + ro + '></div>' +
+            '<div><label>Asset tag</label><input data-k="asset_tag" value="' + esc(si.asset_tag || '') + '"' + ro + '></div>' +
+            '<div><label>Universe / address</label><div style="display:flex;gap:4px"><input data-k="default_universe" type="number" min="1" value="' + (si.default_universe || '') + '"' + ro + '><input data-k="default_address" type="number" min="1" max="512" value="' + (si.default_address || '') + '"' + ro + '></div></div>' +
+            (modes.length ? '<div><label>Mode</label><select data-k="default_mode"' + ro + '><option value=""></option>' + modes.map(function (m) { return '<option' + (m === si.default_mode ? ' selected' : '') + '>' + esc(m) + '</option>'; }).join('') + '</select></div>' : '') +
+            '<div style="grid-column:1 / -1"><label>Notes</label><input data-k="notes" value="' + esc(si.notes || '') + '"' + ro + '></div>' +
+            '<div style="grid-column:1 / -1" class="muted">' + (use && use.length ? 'Placed in: ' + esc(use.join(', ')) : 'Not placed in any layout') + ' <span class="saved"></span></div></div>';
+        }).join('') +
+        (ro ? '' : '<div class="item"><button type="button" data-add="' + ft.id + '">+ Add a unit we found that isn\'t listed</button></div>') + '</details>';
+    });
+    box.innerHTML = html;
+    // wiring
+    Array.prototype.forEach.call(box.querySelectorAll('.chips [data-f]'), function (b) { b.onclick = function () { ST.filter = b.getAttribute('data-f'); renderStock(); }; });
+    $('st-q').oninput = function () { var v = this.value.trim().toLowerCase(); clearTimeout(ST.t); ST.t = setTimeout(function () { ST.q = v; renderStock(); var q = $('st-q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); };
+    Array.prototype.forEach.call(box.querySelectorAll('details.grp'), function (d) { d.addEventListener('toggle', function () { ST.open[d.getAttribute('data-ft')] = d.open; }); });
+    if (ro) return;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-si] [data-k]'), function (el) {
+      el.onchange = function () {
+        var row = el.closest('[data-si]'), id = row.getAttribute('data-si'), k = el.getAttribute('data-k'), data = { id: id };
+        data[k] = el.type === 'checkbox' ? el.checked : el.value;
+        if (k === 'found' && el.checked) { var si0 = stockById(id); if (si0 && si0.status === 'missing') data.status = 'in_service'; }
+        var tag = row.querySelector('.saved'); tag.textContent = 'Saving…';
+        callStock('update', data).then(function (r) {
+          if (!r.ok) { tag.textContent = ''; flashStock(errText(r)); return; }
+          var i = stock.findIndex(function (x) { return x.id === id; }); stock[i] = r.item; recount();
+          if (k === 'found' || k === 'status' || k === 'planned_location') renderStock(); else tag.textContent = 'Saved ✓';
+        }).catch(function (e) { tag.textContent = ''; flashStock('Save failed: ' + e.message); });
+      };
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-dim]'), function (el) {
+      el.onchange = function () {
+        var ftid = el.closest('[data-ft]').getAttribute('data-ft'), data = { id: ftid }; data[el.getAttribute('data-dim')] = el.value === '' ? null : num(el.value);
+        call('fixture_type_update', data).then(function (r) {
+          if (!r.ok) { flashStock(errText(r)); return; }
+          var ft = ftype(ftid); ft[el.getAttribute('data-dim')] = data[el.getAttribute('data-dim')]; ft.dims_source = 'manual'; flashStock('Saved ' + ft.model + ' size.', 'ok');
+        });
+      };
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-add]'), function (b) {
+      b.onclick = function () {
+        var where = prompt('Where did you find it?', ''); if (where === null) return;
+        callStock('add', { fixture_type_id: b.getAttribute('data-add'), found_at: where }).then(function (r) {
+          if (!r.ok) { flashStock(errText(r)); return; } stock.push(r.item); recount(); ST.open[b.getAttribute('data-add')] = true; renderStock();
+        });
+      };
+    });
+  }
+  function flashStock(msg, kind) {
+    var n = document.createElement('div'); n.className = 'note ' + (kind || 'bad'); n.textContent = msg;
+    $('stockview').prepend(n); setTimeout(function () { n.remove(); }, 4000);
+  }
+  function toggleStock() {
+    if (!ST.on && S.dirty && !confirm('You have unsaved layout changes. Open Stock anyway? (They stay in this tab until you come back and save.)')) return;
+    ST.on = !ST.on; $('app').classList.toggle('stock', ST.on); $('stockview').hidden = !ST.on; $('b-stock').classList.toggle('on', ST.on);
+    if (ST.on) {
+      renderStock();
+      callStock('usage').then(function (r) { if (r && r.ok) { ST.usage = r.usage || {}; if (ST.on) renderStock(); } }).catch(function () {});
+    } else render();
+  }
+  $('b-stock').onclick = toggleStock;
 
   // ---------------- stages + layouts ----------------
   function fillStages() {
