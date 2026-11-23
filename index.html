@@ -560,12 +560,14 @@
     if (!p) {
       var kg = 0; S.placements.forEach(function (q) { kg += num(ftype(q.fixture_type_id).weight_kg) || 0; });
       box.innerHTML = '<h2>' + esc(S.layout.name) + '</h2><p class="muted">' + S.placements.length + ' fixtures · ' + kg.toFixed(1) + ' kg rigged</p>' +
+        (D.me.role !== 'viewer' && S.placements.length ? '<div class="row"><button type="button" id="b-autopatch">Auto-patch</button></div>' : '') +
         (S.armed ? '<p class="note ok">Placing <b>' + esc(ftype(S.armed).model) + '</b> — tap a rigging position. Esc to stop.</p>' : '<p class="muted">Tap a fixture to edit it.</p>') +
         '<h2>Rigging positions</h2>' + S.stage.rig_positions.map(function (rg) {
           var n = S.placements.filter(function (q) { return q.rig_position_id === rg.id; });
           var w = n.reduce(function (s, q) { return s + (num(ftype(q.fixture_type_id).weight_kg) || 0); }, 0);
           return '<div>' + esc(rg.name) + (rg.is_placeholder ? ' <span class="muted">(TBC)</span>' : '') + ' <span class="muted">· ' + n.length + ' · ' + w.toFixed(1) + ' kg</span></div>';
         }).join('');
+      if ($('b-autopatch')) $('b-autopatch').onclick = autoPatch;
       return;
     }
     var ft = ftype(p.fixture_type_id), rg = rigById(p.rig_position_id), g = rigGeo(rg), d = dims(ft), used = usedStock(), ro = D.me.role === 'viewer' ? ' disabled' : '';
@@ -645,6 +647,28 @@
   $('sb-del').onclick = removeSel;
   $('sb-done').onclick = function () { S.sel = null; render(); };
   $('sb-dup').onclick = function () { var b = $('i-dup'); if (b) b.click(); };
+
+  // ---------------- auto-patch ----------------
+  function autoPatch() {
+    var uni = parseInt(prompt('Auto-patch every DMX fixture in this layout.\n\nStart on universe:', '1'), 10); if (!uni || uni < 1) return;
+    var addr = parseInt(prompt('Start at address (1–512):', '1'), 10); if (!addr || addr < 1 || addr > 512) return;
+    var sortOf = {}; S.stage.rig_positions.forEach(function (r) { sortOf[r.id] = r.sort || 0; });
+    var list = S.placements.filter(function (p) { var ft = ftype(p.fixture_type_id); return (ft.dmx_modes || []).length; })
+      .sort(function (a, b) { return (sortOf[a.rig_position_id] - sortOf[b.rig_position_id]) || ((num(a.offset_m) || 0) - (num(b.offset_m) || 0)) || ((num(a.offset2_m) || 0) - (num(b.offset2_m) || 0)); });
+    if (!list.length) { flash('No DMX fixtures in this layout to patch.'); return; }
+    var u = uni, a = addr, rolled = false;
+    list.forEach(function (p) {
+      var ft = ftype(p.fixture_type_id);
+      if (!p.mode) p.mode = ft.dmx_modes[0].name;
+      var ch = chCount(p.mode);
+      if (a + ch - 1 > 512) { u += 1; a = 1; rolled = true; }
+      p.universe = u; p.address = a; a += ch;
+    });
+    var skipped = S.placements.length - list.length;
+    S.dirty = true; render();
+    flash('Patched ' + list.length + ' fixtures from ' + list[0].universe + '/' + list[0].address + ' to ' + u + '/' + (a - 1) + ', in rig order (left to right along each position).' +
+      (rolled ? ' Some ran over into universe ' + u + ' so no fixture is split across universes.' : '') + (skipped ? ' Skipped ' + skipped + ' with no DMX (e.g. LED panels).' : '') + ' Hit Save to keep it.', 'ok');
+  }
 
   // ---------------- stages + layouts ----------------
   function fillStages() {
