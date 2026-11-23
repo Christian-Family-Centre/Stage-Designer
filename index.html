@@ -69,6 +69,11 @@
   #cablebar { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:center;
     background:var(--bg); border:2px solid var(--line); border-radius:12px; padding:6px 8px; box-shadow:0 4px 16px rgba(0,0,0,.18); z-index:6; max-width:calc(100% - 16px); font-size:13px; }
   #cablebar .hint { color:var(--muted); }
+  .zoom { position:absolute; right:6px; top:6px; display:flex; gap:4px; z-index:4; }
+  .zoom button { width:32px; height:32px; padding:0; border-radius:8px; font-size:16px; line-height:1; background:var(--bg); }
+  .legend { position:absolute; left:8px; bottom:6px; font-size:10px; color:var(--muted); pointer-events:none; display:flex; gap:8px; flex-wrap:wrap; max-width:70%; }
+  .legend i { display:inline-block; width:14px; height:0; border-top:2px solid; vertical-align:middle; margin-right:3px; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
   #b-cables.on { background:var(--ink); color:var(--bg); }
   .gear td { padding:2px 6px 2px 0; } .gear td:last-child { text-align:right; font-weight:700; }
   #selbar .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:38vw; padding:0 4px; }
@@ -139,8 +144,8 @@
     </aside>
     <section id="views">
       <div id="tabs"><button data-v="top" type="button">Top</button><button data-v="front" type="button">Front</button><button data-v="side" type="button">Side</button></div>
-      <div class="view v-top on" data-v="top"><span class="vt">Top · audience at bottom</span><svg id="svg-top"></svg></div>
-      <div class="view v-front" data-v="front"><span class="vt">Front · from the audience</span><svg id="svg-front"></svg></div>
+      <div class="view v-top on" data-v="top"><span class="vt">Top · audience at bottom</span><svg id="svg-top"></svg><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-top"></div></div>
+      <div class="view v-front" data-v="front"><span class="vt">Front · from the audience</span><svg id="svg-front"></svg><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-front"></div></div>
       <div id="cablebar" hidden>
         <select id="cb-kind" aria-label="Cable type"><option value="dmx">DMX</option><option value="powercon">Power (powerCON)</option><option value="true1">Power (TRUE1)</option><option value="ethercon">Data (etherCON)</option><option value="sdi">SDI</option></select>
         <span class="hint" id="cb-hint"></span>
@@ -148,7 +153,7 @@
         <button type="button" class="primary" id="cb-done">Done</button>
       </div>
       <div id="selbar" hidden><span class="nm" id="sb-name"></span><button type="button" id="sb-dup">Duplicate</button><button type="button" class="danger" id="sb-del">Remove</button><button type="button" id="sb-done" aria-label="Deselect">Done</button></div>
-      <div class="view v-side" data-v="side"><span class="vt">Side · audience on the left</span><svg id="svg-side"></svg></div>
+      <div class="view v-side" data-v="side"><span class="vt">Side · audience on the left</span><svg id="svg-side"></svg><div class="zoom"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button><button type="button" data-z="fit" aria-label="Fit">⤢</button></div><div class="legend" id="lg-side"></div></div>
     </section>
     <aside class="right" id="inspector"></aside>
   </main>
@@ -267,6 +272,12 @@
     else c[2] -= TRUSS_HALF + d.h / 2;
     return c;
   }
+
+  // ---------------- fixture colours ----------------
+  var CAT = { moving_head: ['#0e7490', 'Moving head'], wash: ['#c2410c', 'Wash'], par: ['#b45309', 'Par'], profile: ['#4d7c0f', 'Profile'],
+    blinder: ['#ca8a04', 'Blinder'], strobe: ['#db2777', 'Strobe'], effect: ['#db2777', 'Effect'], hazer: ['#64748b', 'Hazer'],
+    led_panel: ['#1e3a8a', 'LED panel'], other: ['#555555', 'Other'] };
+  function catCol(ft) { return (CAT[ft.category] || CAT.other)[0]; }
 
   // ---------------- cables ----------------
   var CABLE = { dmx: { name: 'DMX', col: '#7a4fd6', dash: '6 3' }, powercon: { name: 'powerCON', col: '#d1361f', dash: '' },
@@ -406,10 +417,31 @@
     var ro = D.me.role === 'viewer'; $('sb-dup').hidden = ro; $('sb-del').hidden = ro;
   }
 
+  var ZV = { top: { k: 1, c: null }, front: { k: 1, c: null }, side: { k: 1, c: null } };
+  function applyZoom(name) {
+    var svg = $(VIEWS[name].svg), b = svg._base; if (!b) return;
+    var z = ZV[name]; z.k = Math.max(1, Math.min(14, z.k));
+    var w = b[2] / z.k, h = b[3] / z.k, bc = [b[0] + b[2] / 2, b[1] + b[3] / 2];
+    if (!z.c || z.k === 1) z.c = bc.slice();
+    z.c[0] = Math.max(b[0] + w / 2, Math.min(b[0] + b[2] - w / 2, z.c[0]));
+    z.c[1] = Math.max(b[1] + h / 2, Math.min(b[1] + b[3] - h / 2, z.c[1]));
+    svg.setAttribute('viewBox', [z.c[0] - w / 2, z.c[1] - h / 2, w, h].join(' '));
+  }
+  function zoomAt(name, f, pt) {   // pt in svg coords
+    var z = ZV[name], k0 = z.k, svg = $(VIEWS[name].svg); applyZoom(name);
+    var c0 = z.c ? z.c.slice() : null; z.k = Math.max(1, Math.min(14, k0 * f));
+    if (pt && c0) z.c = [pt[0] + (c0[0] - pt[0]) * k0 / z.k, pt[1] + (c0[1] - pt[1]) * k0 / z.k];
+    applyZoom(name);
+  }
+  function renderLegend(name) {
+    var kinds = {}; S.cables.forEach(function (c) { kinds[c.kind] = 1; });
+    var el = $('lg-' + name); if (!el) return;
+    el.innerHTML = Object.keys(kinds).map(function (k) { var c = CABLE[k] || CABLE.other; return '<span><i style="border-color:' + c.col + ';border-top-style:' + (c.dash ? 'dashed' : 'solid') + '"></i>' + c.name + '</span>'; }).join('');
+  }
   function renderView(name) {
     var V = VIEWS[name], svg = $(V.svg), B = stageBounds(), pad = 0.8;
     var ra = B[V.a], rb = B[V.b];
-    svg.setAttribute('viewBox', [ra[0] - pad, -(rb[1] + pad), ra[1] - ra[0] + 2 * pad, rb[1] - rb[0] + 2 * pad].join(' '));
+    svg._base = [ra[0] - pad, -(rb[1] + pad), ra[1] - ra[0] + 2 * pad, rb[1] - rb[0] + 2 * pad]; applyZoom(name); renderLegend(name);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.innerHTML = '';
     var fs = Math.max(0.16, (ra[1] - ra[0]) / 60);
@@ -479,8 +511,8 @@
       var noStock = !p.stock_item_id; if (CM.on && CM.anchor && CM.anchor.pid === p.id) sel = true;
       var g = svgEl('g', { 'data-pid': p.id, style: 'cursor:move' });
       g.appendChild(svgEl('rect', { x: c[V.a] - sz[0] / 2, y: -(c[V.b] + sz[1] / 2), width: sz[0], height: sz[1], rx: Math.min(sz[0], sz[1]) * 0.15,
-        fill: sel ? C('--sel') : C('--fix'), 'fill-opacity': 0.25, stroke: sel ? C('--sel') : (noStock ? C('--bad-ink') : C('--fix')),
-        'stroke-width': sel ? 2.5 : 1.5, 'stroke-dasharray': d.known ? '' : '3 3', 'vector-effect': 'non-scaling-stroke' }));
+        fill: catCol(ft), 'fill-opacity': sel ? 0.7 : 0.45, stroke: sel ? C('--ink') : (noStock ? C('--bad-ink') : catCol(ft)),
+        'stroke-width': sel ? 3 : 1.5, 'stroke-dasharray': d.known ? '' : '3 3', 'vector-effect': 'non-scaling-stroke' }));
       if (name === 'top' || sz[0] > 0.25) g.appendChild(svgEl('text', { x: c[V.a], y: -(c[V.b]) + fs * 0.3, 'font-size': fs * 0.7, 'text-anchor': 'middle', fill: C('--ink'), 'pointer-events': 'none' }, p.label || shortName(ft)));
       svg.appendChild(g);
     });
@@ -577,8 +609,26 @@
 
   var drag = null;
   Object.keys(VIEWS).forEach(function (name) {
-    var svg = $(VIEWS[name].svg);
+    var svg = $(VIEWS[name].svg), ptrs = {}, pinch = null, pan = null;
+    function svgXY(ev) { var pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; var q = pt.matrixTransform(svg.getScreenCTM().inverse()); return [q.x, q.y]; }
+    svg.addEventListener('wheel', function (ev) { ev.preventDefault(); zoomAt(name, ev.deltaY < 0 ? 1.2 : 1 / 1.2, svgXY(ev)); }, { passive: false });
+    svg.parentNode.querySelector('.zoom').addEventListener('click', function (ev) {
+      var z = ev.target.getAttribute('data-z'); if (!z) return;
+      if (z === 'fit') { ZV[name].k = 1; ZV[name].c = null; applyZoom(name); } else zoomAt(name, z === 'in' ? 1.5 : 1 / 1.5, ZV[name].c);
+    });
     svg.addEventListener('pointerdown', function (ev) {
+      ptrs[ev.pointerId] = [ev.clientX, ev.clientY];
+      var ids = Object.keys(ptrs);
+      if (ids.length === 2) {   // start pinch: cancel any drag/pan
+        drag = null; pan = null;
+        var a = ptrs[ids[0]], b = ptrs[ids[1]];
+        pinch = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]), k0: ZV[name].k, m0: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], c0: (ZV[name].c || [0, 0]).slice(), scale: svg.getScreenCTM().a };
+        return;
+      }
+      if (ids.length > 2) return;
+    });
+    svg.addEventListener('pointerdown', function (ev) {
+      if (Object.keys(ptrs).length > 1) return;
       var q = svgPoint(svg, ev), canEdit = D.me.role !== 'viewer';
       var fx = ev.target.closest('[data-pid]');
       if (CM.on && canEdit) { cableTap(name, q, fx ? fx.getAttribute('data-pid') : null); return; }
@@ -591,10 +641,35 @@
         render(); return;
       }
       if (S.armed && canEdit) { placeAt(name, q); return; }
-      S.sel = null; render();
+      // empty space: pan if dragged, deselect if tapped
+      pan = { x0: ev.clientX, y0: ev.clientY, c0: (ZV[name].c || [0, 0]).slice(), scale: svg.getScreenCTM().a, moved: false };
+      try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
     });
     svg.addEventListener('pointermove', function (ev) {
-      if (!drag || drag.svg !== svg) return;
+      if (ptrs[ev.pointerId]) ptrs[ev.pointerId] = [ev.clientX, ev.clientY];
+      var ids = Object.keys(ptrs);
+      if (pinch && ids.length === 2) {
+        var a = ptrs[ids[0]], b = ptrs[ids[1]], d = Math.hypot(a[0] - b[0], a[1] - b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        var z = ZV[name]; z.k = Math.max(1, Math.min(14, pinch.k0 * d / (pinch.d0 || 1)));
+        var sc = pinch.scale * z.k / pinch.k0;
+        z.c = [pinch.c0[0] - (m[0] - pinch.m0[0]) / sc, pinch.c0[1] - (m[1] - pinch.m0[1]) / sc];
+        applyZoom(name); return;
+      }
+      if (pan) {
+        var dx = ev.clientX - pan.x0, dy = ev.clientY - pan.y0;
+        if (!pan.moved && Math.hypot(dx, dy) < 6) return;
+        pan.moved = true; if (ZV[name].k <= 1) return;
+        ZV[name].c = [pan.c0[0] - dx / pan.scale, pan.c0[1] - dy / pan.scale]; applyZoom(name);
+      }
+    });
+    var endPtr = function (ev) {
+      delete ptrs[ev.pointerId];
+      if (pinch) { if (Object.keys(ptrs).length < 2) pinch = null; pan = null; return; }
+      if (pan) { var tapped = !pan.moved; pan = null; if (tapped && ev.type === 'pointerup') { S.sel = null; render(); } }
+    };
+    svg.addEventListener('pointerup', endPtr); svg.addEventListener('pointercancel', endPtr);
+    svg.addEventListener('pointermove', function (ev) {
+      if (!drag || drag.svg !== svg || pinch) return;
       var p = S.placements.find(function (x) { return x.id === drag.pid; }); if (!p) return;
       var rg = rigById(p.rig_position_id), q = svgPoint(svg, ev), want = toParams(name, rg, q, p);
       if (!want) return;
@@ -657,7 +732,7 @@
       if (ft.category === 'other') return;
       var n = counts[ft.id] || 0, over = n > ft.in_service;
       var b = document.createElement('button'); b.type = 'button'; b.className = 'ftype' + (S.armed === ft.id ? ' armed' : '');
-      b.innerHTML = '<span>' + esc(ft.model) + '<small>' + esc((ft.manufacturer || '') + (ft.width_m == null ? ' · size TBC' : '')) + '</small></span>' +
+      b.innerHTML = '<span><i class="sw" style="background:' + catCol(ft) + '"></i>' + esc(ft.model) + '<small>' + esc((ft.manufacturer || '') + (ft.width_m == null ? ' · size TBC' : '')) + '</small></span>' +
         '<span class="cnt' + (over ? ' over' : '') + '">' + n + ' / ' + ft.in_service + '</span>';
       b.title = n + ' placed · ' + ft.in_service + ' working · ' + ft.total + ' owned';
       b.onclick = function () { if (D.me.role === 'viewer') return; S.armed = S.armed === ft.id ? null : ft.id; S.sel = null; render(); };
