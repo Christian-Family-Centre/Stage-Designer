@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stage Designer · CFC</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#fff; --ink:#000; --muted:#5c5c5c; --line:#000; --soft:#f2f2f2; --soft2:#e6e6e6;
+    --warn-bg:#fff4d6; --warn-ink:#5a4300; --bad-bg:#ffe3e0; --bad-ink:#7a1408; --ok-bg:#e4f5e6; --ok-ink:#0f4d1a;
+    --rig:#000; --ph:#b06f00; --fix:#1f5fd1; --sel:#d1361f; --deck:#f2f2f2;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#000; --ink:#fff; --muted:#b0b0b0; --line:#fff; --soft:#1c1c1c; --soft2:#2a2a2a;
+    --warn-bg:#3d3000; --warn-ink:#ffe9a8; --bad-bg:#4a120c; --bad-ink:#ffd2cc; --ok-bg:#0f3516; --ok-ink:#c9f2cf;
+    --rig:#fff; --ph:#ffb84d; --fix:#6fa0ff; --sel:#ff6a52; --deck:#161616;
+  } }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font-family:Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight:500; font-size:14px; }
+  button, select, input { font:inherit; color:inherit; }
+  button { background:var(--bg); border:2px solid var(--line); border-radius:8px; padding:6px 12px; font-weight:700; cursor:pointer; }
+  button.primary { background:var(--ink); color:var(--bg); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.link { border:0; padding:0; background:none; text-decoration:underline; font-weight:500; }
+  select, input { background:var(--bg); border:2px solid var(--line); border-radius:8px; padding:5px 8px; min-width:0; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 2px; }
+  h1 { font-size:16px; font-weight:800; margin:0; letter-spacing:.02em; }
+  h2 { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; margin:14px 0 6px; }
+  .muted { color:var(--muted); }
+  .note { padding:8px 12px; border-radius:8px; margin:6px 0; }
+  .note.bad { background:var(--bad-bg); color:var(--bad-ink); } .note.warn { background:var(--warn-bg); color:var(--warn-ink); }
+  .note.ok { background:var(--ok-bg); color:var(--ok-ink); }
+
+  /* lock screen */
+  #lock { max-width:360px; margin:12vh auto; padding:24px; }
+  #lock input { width:100%; font-size:22px; letter-spacing:.4em; text-align:center; }
+  #lock button { width:100%; margin-top:12px; }
+
+  /* app */
+  #app { display:grid; height:100%; grid-template-rows:auto auto 1fr; }
+  header { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:2px solid var(--line); }
+  header .sp { flex:1; }
+  #dirty { font-size:12px; color:var(--warn-ink); background:var(--warn-bg); border-radius:6px; padding:2px 8px; }
+  #warnbar:empty { display:none; } #warnbar { padding:0 12px; }
+  main { display:grid; grid-template-columns:210px 1fr 260px; min-height:0; }
+  aside { overflow:auto; padding:4px 12px 16px; border-right:2px solid var(--soft2); }
+  aside.right { border-right:0; border-left:2px solid var(--soft2); }
+  .ftype { display:flex; justify-content:space-between; align-items:center; gap:6px; width:100%; text-align:left;
+    border:2px solid var(--soft2); border-radius:8px; padding:6px 8px; margin:4px 0; font-weight:500; }
+  .ftype.armed { border-color:var(--fix); background:var(--soft); }
+  .ftype .cnt { font-size:12px; white-space:nowrap; }
+  .ftype .cnt.over { color:var(--bad-ink); background:var(--bad-bg); border-radius:6px; padding:0 4px; }
+  .ftype small { display:block; color:var(--muted); font-size:11px; }
+  #views { display:grid; grid-template-rows:1.3fr 1fr; grid-template-columns:1fr 1fr; gap:8px; padding:8px; min-height:0; }
+  #views .v-top { grid-column:1 / span 2; }
+  .view { position:relative; border:2px solid var(--soft2); border-radius:10px; min-height:0; overflow:hidden; }
+  .view .vt { position:absolute; left:8px; top:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); pointer-events:none; }
+  .view svg { width:100%; height:100%; display:block; touch-action:none; user-select:none; }
+  #tabs { display:none; }
+  .kv { display:grid; grid-template-columns:1fr 1fr; gap:0 8px; }
+  aside.right input, aside.right select { width:100%; }
+  .row { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+  #hint { font-size:12px; }
+  svg text { font-family:Montserrat, sans-serif; }
+
+  @media (max-width: 900px) {
+    #app { height:auto; min-height:100%; }
+    header #who, header .sp { display:none; }
+    main { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto auto; }
+    aside, #views, #palette { min-width:0; }
+    header select { max-width:46vw; }
+    aside { border:0; border-bottom:2px solid var(--soft2); }
+    aside.left { padding:6px 8px; overflow:visible; }
+    aside.left h2, aside.left #hint { display:none; }
+    #palette { display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; }
+    .ftype { width:auto; min-width:150px; margin:0; flex:0 0 auto; }
+    #views { height:62vh; }
+    aside.right { border-left:0; border-top:2px solid var(--soft2); }
+    #views { grid-template-rows:auto 1fr; grid-template-columns:1fr; }
+    #tabs { display:flex; gap:6px; }
+    #views .view { display:none; grid-column:auto; } #views .view.on { display:block; }
+  }
+</style>
+</head>
+<body>
+
+<section id="lock" hidden>
+  <h1>Stage Designer</h1>
+  <p class="muted">Christian Family Centre · production</p>
+  <div id="nolink" hidden>
+    <p>This device doesn't have your crew link yet. Open your timesheet link on this device first, or paste it here:</p>
+    <input id="link-in" placeholder="Paste your timesheet link" style="letter-spacing:0;font-size:14px;text-align:left">
+  </div>
+  <div id="pinbox">
+    <label for="pin">Your timesheet PIN</label>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8">
+  </div>
+  <button id="b-unlock" class="primary" type="button">Unlock</button>
+  <div id="lock-note"></div>
+</section>
+
+<div id="app" hidden>
+  <header>
+    <h1>Stage Designer</h1>
+    <select id="sel-stage" aria-label="Stage"></select>
+    <select id="sel-layout" aria-label="Layout"></select>
+    <button id="b-new" type="button">New layout</button>
+    <button id="b-rename" type="button">Rename</button>
+    <button id="b-del" type="button">Delete</button>
+    <span class="sp"></span>
+    <span id="dirty" hidden>Unsaved</span>
+    <button id="b-save" class="primary" type="button">Save</button>
+    <span class="muted" id="who"></span>
+    <button id="b-lock" class="link" type="button">Lock</button>
+  </header>
+  <div id="warnbar"></div>
+  <main>
+    <aside class="left">
+      <h2>Fixtures</h2>
+      <p id="hint" class="muted">Pick a fixture, then tap a truss, pole, point or the deck in any view. Drag to slide it along. Arrow keys nudge 5cm (Shift = 1cm).</p>
+      <div id="palette"></div>
+    </aside>
+    <section id="views">
+      <div id="tabs"><button data-v="top" type="button">Top</button><button data-v="front" type="button">Front</button><button data-v="side" type="button">Side</button></div>
+      <div class="view v-top on" data-v="top"><span class="vt">Top · audience at bottom</span><svg id="svg-top"></svg></div>
+      <div class="view v-front" data-v="front"><span class="vt">Front · from the audience</span><svg id="svg-front"></svg></div>
+      <div class="view v-side" data-v="side"><span class="vt">Side · audience on the left</span><svg id="svg-side"></svg></div>
+    </section>
+    <aside class="right" id="inspector"></aside>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var API = 'https://lgiooecdrdpiksiorvsf.supabase.co/rest/v1/rpc/stage_api';
+  var API_KEY = 'sb_publishable_5oP0fc7wDCBmfGV2tQn8oQ_U6IB4w7-';
+  var KEY_STORE = 'cfc_clock_key';            // shared with the timesheet clock (same origin)
+  var LOCK_AFTER_HIDDEN_MS = 10 * 60 * 1000;
+  var GRID = 0.05, TRUSS_HALF = 0.15, DEFAULT_DIM = 0.3;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var key = null, pin = null, hiddenAt = null;
+  var D = null;          // bootstrap data
+  var stock = [];        // stock items
+  var S = { stage: null, layout: null, placements: [], cables: [], sel: null, armed: null, dirty: false, view: 'top' };
+
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
+  function uuid() { return (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, function () { return (Math.random() * 16 | 0).toString(16); })); }
+  function num(v) { return v == null || v === '' ? null : Number(v); }
+  function r2(v) { return Math.round(v * 1000) / 1000; }
+  function fmt(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+
+  function call(action, data) {
+    var ctl = new AbortController(); var t = setTimeout(function () { ctl.abort(); }, 20000);
+    return fetch(API, { method: 'POST', cache: 'no-store', signal: ctl.signal,
+      headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_key: key, p_pin: pin, p_action: action, p_data: data || {} })
+    }).then(function (res) { clearTimeout(t); if (!res.ok) return res.json().then(function (j) { throw new Error(j.message || ('HTTP ' + res.status)); }); return res.json(); });
+  }
+  var ERR = { unknown_link: "That link isn't recognised. Open your latest timesheet link on this device.",
+    setup_required: 'Set your PIN in the timesheet app first.', wrong_pin: 'Wrong PIN.', locked: 'Too many tries. Locked for 15 minutes.',
+    no_stage_access: "You're not on the Stage Designer crew list yet. Ask Ryan to add you.", read_only: 'You have view-only access.',
+    admin_only: 'Admins only.', stale: 'Someone else saved this layout since you opened it. Reload it to see their changes.' };
+  function errText(r) { return (ERR[r.error] || ('Something went wrong: ' + (r.error || 'unknown'))) + (r.attempts_left ? ' ' + r.attempts_left + ' tries left.' : ''); }
+
+  // ---------------- lock / unlock ----------------
+  function showLock(msg) {
+    $('app').hidden = true; $('lock').hidden = false;
+    $('nolink').hidden = !!key; $('lock-note').innerHTML = msg ? '<p class="note bad">' + esc(msg) + '</p>' : '';
+    $('pin').value = ''; setTimeout(function () { (key ? $('pin') : $('link-in')).focus(); }, 50);
+  }
+  function unlock() {
+    if (!key) {
+      var raw = $('link-in').value.trim(); var m = raw.match(/#(.+)$/); var k = (m ? m[1] : raw).trim();
+      if (k.length < 20) { showLock('Paste the full timesheet link.'); return; }
+      key = k; store(KEY_STORE, key);
+    }
+    pin = $('pin').value.trim(); if (!pin) return;
+    $('b-unlock').disabled = true;
+    Promise.all([call('bootstrap'), call('stock_list')]).then(function (rs) {
+      $('b-unlock').disabled = false;
+      if (!rs[0].ok) { pin = null; showLock(errText(rs[0])); return; }
+      D = rs[0]; stock = rs[1].items || [];
+      $('lock').hidden = true; $('app').hidden = false;
+      $('who').textContent = D.me.name + ' · ' + D.me.role;
+      var canEdit = D.me.role !== 'viewer';
+      ['b-new', 'b-rename', 'b-del', 'b-save'].forEach(function (id) { $(id).hidden = !canEdit; });
+      fillStages();
+    }).catch(function (e) { $('b-unlock').disabled = false; pin = null; showLock('Could not reach the server. ' + e.message); });
+  }
+  $('b-unlock').onclick = unlock;
+  $('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') unlock(); });
+  $('b-lock').onclick = function () { if (S.dirty && !confirm('You have unsaved changes. Lock anyway?')) return; pin = null; showLock(); };
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (pin && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_HIDDEN_MS && !S.dirty) { pin = null; showLock('Locked after being idle.'); }
+  });
+  window.addEventListener('beforeunload', function (e) { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  // ---------------- lookups ----------------
+  function ftype(id) { return D.fixture_types.find(function (f) { return f.id === id; }); }
+  function rigById(id) { return S.stage.rig_positions.find(function (r) { return r.id === id; }); }
+  function stockById(id) { return stock.find(function (s) { return s.id === id; }); }
+  function dims(ft) { return { w: num(ft.width_m) || DEFAULT_DIM, h: num(ft.height_m) || DEFAULT_DIM, d: num(ft.depth_m) || DEFAULT_DIM, known: ft.width_m != null }; }
+  function chCount(mode) { var m = String(mode || '').match(/(\d+)/); return m ? +m[1] : 1; }
+  function shortName(ft) { return ft.model.replace(/\s*(RGBW|FW RGB|Deco|Active DMX)\b.*$/, ''); }
+
+  // ---------------- plane geometry ----------------
+  function rigGeo(r) {
+    var A = [num(r.x1), num(r.y1), num(r.z1)];
+    var B = [num(r.x2) != null ? num(r.x2) : A[0], num(r.y2) != null ? num(r.y2) : A[1], num(r.z2) != null ? num(r.z2) : A[2]];
+    if (r.kind === 'floor') return { kind: 'area', A: A, z: A[2], poly: r.area || S.stage.outline };
+    if (r.kind === 'led_wall') {
+      var hx = B[0] - A[0], hy = B[1] - A[1], W = Math.hypot(hx, hy);
+      return { kind: 'wall', A: A, H: [hx / (W || 1), hy / (W || 1)], W: W, Hgt: B[2] - A[2] };
+    }
+    var v = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], len = Math.hypot(v[0], v[1], v[2]);
+    return { kind: len < 1e-6 ? 'point' : 'line', A: A, B: B, len: len, dir: len ? [v[0] / len, v[1] / len, v[2] / len] : [1, 0, 0] };
+  }
+  function allowed(ft, r) {
+    if (ft.category === 'led_panel') return r.kind === 'led_wall' || r.kind === 'floor';
+    if (r.kind === 'led_wall') return false;
+    if (ft.category === 'other') return false;   // e.g. dimmer racks
+    return true;
+  }
+  function extentAlong(p, g) {
+    var d = dims(ftype(p.fixture_type_id));
+    return Math.abs(g.dir[0]) * d.w + Math.abs(g.dir[1]) * d.d + Math.abs(g.dir[2]) * d.h;
+  }
+  // world centre of a placement
+  function world(p) {
+    var r = rigById(p.rig_position_id), g = rigGeo(r), d = dims(ftype(p.fixture_type_id)), t = num(p.offset_m) || 0;
+    if (g.kind === 'area') return [t, num(p.offset2_m) || 0, g.z + d.h / 2];
+    if (g.kind === 'wall') return [g.A[0] + g.H[0] * t, g.A[1] + g.H[1] * t - d.d / 2, g.A[2] + (num(p.offset2_m) || d.h / 2)];
+    var c = g.kind === 'point' ? g.A.slice() : [g.A[0] + g.dir[0] * t, g.A[1] + g.dir[1] * t, g.A[2] + g.dir[2] * t];
+    var vertical = Math.abs(g.dir[2]) > 0.9 && g.kind === 'line';
+    var hang = vertical && p.hang !== 'floor' ? 'side' : p.hang;
+    if (hang === 'over') c[2] += TRUSS_HALF + d.h / 2;
+    else if (hang === 'side') c[1] -= TRUSS_HALF + d.d / 2;
+    else c[2] -= TRUSS_HALF + d.h / 2;
+    return c;
+  }
+
+  // ---------------- views ----------------
+  var VIEWS = {
+    top:   { svg: 'svg-top',   a: 0, b: 1, size: function (d) { return [d.w, d.d]; } },
+    front: { svg: 'svg-front', a: 0, b: 2, size: function (d) { return [d.w, d.h]; } },
+    side:  { svg: 'svg-side',  a: 1, b: 2, size: function (d) { return [d.d, d.h]; } }
+  };
+  function stageBounds() {
+    var xs = [], ys = [], zs = [0];
+    S.stage.outline.forEach(function (p) { xs.push(p[0]); ys.push(p[1]); });
+    S.stage.rig_positions.forEach(function (r) {
+      [['x1', xs], ['x2', xs], ['y1', ys], ['y2', ys], ['z1', zs], ['z2', zs]].forEach(function (k) { if (r[k[0]] != null) k[1].push(num(r[k[0]])); });
+    });
+    zs.push(num(S.stage.deck_height_m) + 0.5);
+    function mm(a) { return [Math.min.apply(null, a), Math.max.apply(null, a)]; }
+    return [mm(xs), mm(ys), mm(zs)];
+  }
+  function svgEl(tag, attrs, text) {
+    var e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  // map world (a,b) to svg coords: X = a, Y = -b
+  function P(a, b) { return a.toFixed(3) + ',' + (-b).toFixed(3); }
+
+  function render() { renderPalette(); renderInspector(); renderWarnings(); Object.keys(VIEWS).forEach(renderView); $('dirty').hidden = !S.dirty; }
+
+  function renderView(name) {
+    var V = VIEWS[name], svg = $(V.svg), B = stageBounds(), pad = 0.8;
+    var ra = B[V.a], rb = B[V.b];
+    svg.setAttribute('viewBox', [ra[0] - pad, -(rb[1] + pad), ra[1] - ra[0] + 2 * pad, rb[1] - rb[0] + 2 * pad].join(' '));
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.innerHTML = '';
+    var fs = Math.max(0.16, (ra[1] - ra[0]) / 60);
+    var st = getComputedStyle(document.documentElement);
+    var C = function (v) { return st.getPropertyValue(v).trim(); };
+    var deck = num(S.stage.deck_height_m);
+
+    // stage deck
+    if (name === 'top') {
+      svg.appendChild(svgEl('polygon', { points: S.stage.outline.map(function (p) { return P(p[0], p[1]); }).join(' '), fill: C('--deck'), stroke: C('--muted'), 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke',
+        'stroke-dasharray': (S.stage.placeholder_fields || []).indexOf('outline_shape') >= 0 ? '6 4' : '' }));
+      svg.appendChild(svgEl('text', { x: 0, y: (pad * 0.6).toFixed(2), 'font-size': fs, 'text-anchor': 'middle', fill: C('--muted') }, 'AUDIENCE'));
+    } else {
+      var r = B[V.a];
+      var lo = name === 'front' ? B[0] : [Math.min.apply(null, S.stage.outline.map(function (p) { return p[1]; })), Math.max.apply(null, S.stage.outline.map(function (p) { return p[1]; }))];
+      svg.appendChild(svgEl('rect', { x: lo[0], y: -deck, width: lo[1] - lo[0], height: deck, fill: C('--deck'), stroke: C('--muted'), 'stroke-width': 1.5, 'vector-effect': 'non-scaling-stroke' }));
+      svg.appendChild(svgEl('line', { x1: r[0] - pad, y1: 0, x2: r[1] + pad, y2: 0, stroke: C('--muted'), 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }));
+    }
+
+    // rig positions
+    S.stage.rig_positions.forEach(function (rg) {
+      if (rg.kind === 'floor') return;
+      var g = rigGeo(rg), col = rg.is_placeholder ? C('--ph') : C('--rig'), dash = rg.is_placeholder ? '6 4' : '';
+      var grp = svgEl('g', { 'data-rig': rg.id, style: 'cursor:' + (S.armed ? 'copy' : 'default') });
+      var a1, b1, a2, b2;
+      if (g.kind === 'wall') {
+        var A0 = [g.A[0], g.A[1], g.A[2]], B0 = [g.A[0] + g.H[0] * g.W, g.A[1] + g.H[1] * g.W, g.A[2] + g.Hgt];
+        a1 = Math.min(A0[V.a], B0[V.a]); a2 = Math.max(A0[V.a], B0[V.a]); b1 = Math.min(A0[V.b], B0[V.b]); b2 = Math.max(A0[V.b], B0[V.b]);
+        var w = Math.max(a2 - a1, 0.06), h = Math.max(b2 - b1, 0.06);
+        grp.appendChild(svgEl('rect', { x: a1 - (a2 - a1 < 0.06 ? 0.03 : 0), y: -b2 - (b2 - b1 < 0.06 ? 0.03 : 0), width: w, height: h, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-dasharray': dash, 'vector-effect': 'non-scaling-stroke' }));
+      } else if (g.kind === 'point') {
+        a1 = g.A[V.a]; b1 = g.A[V.b]; a2 = a1; b2 = b1;
+        grp.appendChild(svgEl('circle', { cx: a1, cy: -b1, r: 0.08, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-dasharray': dash, 'vector-effect': 'non-scaling-stroke' }));
+      } else {
+        a1 = g.A[V.a]; b1 = g.A[V.b]; a2 = g.B[V.a]; b2 = g.B[V.b];
+        var flat = Math.hypot(a2 - a1, b2 - b1) < 1e-3;
+        if (flat) grp.appendChild(svgEl('rect', { x: a1 - TRUSS_HALF, y: -b1 - TRUSS_HALF, width: 2 * TRUSS_HALF, height: 2 * TRUSS_HALF, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-dasharray': dash, 'vector-effect': 'non-scaling-stroke' }));
+        else grp.appendChild(svgEl('line', { x1: a1, y1: -b1, x2: a2, y2: -b2, stroke: col, 'stroke-width': rg.kind === 'truss' ? 6 : 3, 'stroke-linecap': 'round', 'stroke-dasharray': dash, 'vector-effect': 'non-scaling-stroke', opacity: rg.kind === 'truss' ? 0.55 : 0.8 }));
+      }
+      var lx = Math.min(a1, a2), ly = Math.max(b1, b2);
+      grp.appendChild(svgEl('text', { x: lx, y: -(ly) - fs * 0.6, 'font-size': fs * 0.85, fill: col }, rg.name + (rg.is_placeholder ? ' · TBC' : '')));
+      svg.appendChild(grp);
+    });
+
+    // fixtures (draw selected last)
+    var list = S.placements.slice().sort(function (p, q) { return (p.id === S.sel) - (q.id === S.sel); });
+    list.forEach(function (p) {
+      var ft = ftype(p.fixture_type_id), d = dims(ft), c = world(p), sz = V.size(d), sel = p.id === S.sel;
+      var noStock = !p.stock_item_id;
+      var g = svgEl('g', { 'data-pid': p.id, style: 'cursor:move' });
+      g.appendChild(svgEl('rect', { x: c[V.a] - sz[0] / 2, y: -(c[V.b] + sz[1] / 2), width: sz[0], height: sz[1], rx: Math.min(sz[0], sz[1]) * 0.15,
+        fill: sel ? C('--sel') : C('--fix'), 'fill-opacity': 0.25, stroke: sel ? C('--sel') : (noStock ? C('--bad-ink') : C('--fix')),
+        'stroke-width': sel ? 2.5 : 1.5, 'stroke-dasharray': d.known ? '' : '3 3', 'vector-effect': 'non-scaling-stroke' }));
+      if (name === 'top' || sz[0] > 0.25) g.appendChild(svgEl('text', { x: c[V.a], y: -(c[V.b]) + fs * 0.3, 'font-size': fs * 0.7, 'text-anchor': 'middle', fill: C('--ink'), 'pointer-events': 'none' }, p.label || shortName(ft)));
+      svg.appendChild(g);
+    });
+  }
+
+  // ---------------- pointer: place + drag ----------------
+  function svgPoint(svg, ev) {
+    var pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    var q = pt.matrixTransform(svg.getScreenCTM().inverse()); return [q.x, -q.y];
+  }
+  function segDist(p, a, b) {
+    var vx = b[0] - a[0], vy = b[1] - a[1], L = vx * vx + vy * vy, t = L ? ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L : 0;
+    t = Math.max(0, Math.min(1, t)); return Math.hypot(p[0] - a[0] - t * vx, p[1] - a[1] - t * vy);
+  }
+  function inPoly(pt, poly) {
+    var c = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if (((yi > pt[1]) !== (yj > pt[1])) && (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)) c = !c;
+    }
+    return c;
+  }
+  // distance in a view from point q to a rig plane
+  function rigDist(name, rg, q) {
+    var V = VIEWS[name], g = rigGeo(rg);
+    if (g.kind === 'area') {
+      if (name === 'top') return inPoly(q, g.poly) ? 0.05 : 9;
+      var xs = g.poly.map(function (p) { return p[V.a]; });
+      return segDist(q, [Math.min.apply(null, xs), g.z], [Math.max.apply(null, xs), g.z]) + 0.05;
+    }
+    if (g.kind === 'wall') {
+      var A0 = g.A, B0 = [g.A[0] + g.H[0] * g.W, g.A[1] + g.H[1] * g.W, g.A[2] + g.Hgt];
+      var a1 = Math.min(A0[V.a], B0[V.a]), a2 = Math.max(A0[V.a], B0[V.a]), b1 = Math.min(A0[V.b], B0[V.b]), b2 = Math.max(A0[V.b], B0[V.b]);
+      var dx = Math.max(a1 - q[0], 0, q[0] - a2), dy = Math.max(b1 - q[1], 0, q[1] - b2); return Math.hypot(dx, dy);
+    }
+    if (g.kind === 'point') return Math.hypot(q[0] - g.A[V.a], q[1] - g.A[V.b]);
+    return segDist(q, [g.A[V.a], g.A[V.b]], [g.B[V.a], g.B[V.b]]);
+  }
+  // convert a view point to plane params {t, t2}; returns null if the plane can't move in this view
+  function toParams(name, rg, q, p) {
+    var V = VIEWS[name], g = rigGeo(rg), cur = p ? { t: num(p.offset_m) || 0, t2: num(p.offset2_m) } : { t: 0, t2: null };
+    if (g.kind === 'point') return { t: 0, t2: null };
+    if (g.kind === 'area') {
+      if (name === 'top') return { t: q[0], t2: q[1] };
+      return V.a === 0 ? { t: q[0], t2: cur.t2 != null ? cur.t2 : 1 } : { t: cur.t, t2: q[0] };
+    }
+    if (g.kind === 'wall') {
+      var u = name === 'side' ? cur.t : ((q[0] - g.A[V.a]) / (g.H[V.a] || 1));
+      var v = name === 'top' ? cur.t2 : q[1] - g.A[2];
+      return { t: u, t2: v };
+    }
+    var a = [g.A[V.a], g.A[V.b]], b = [g.B[V.a], g.B[V.b]], vx = b[0] - a[0], vy = b[1] - a[1], L = vx * vx + vy * vy;
+    if (L < 1e-6) return p ? null : { t: g.len / 2, t2: null };
+    var f = ((q[0] - a[0]) * vx + (q[1] - a[1]) * vy) / L;
+    return { t: f * g.len, t2: null };
+  }
+  // snap + clearance resolution; returns {t,t2} or null if no legal spot
+  function resolve(p, rg, want, fine) {
+    var g = rigGeo(rg), ft = ftype(p.fixture_type_id), d = dims(ft), clr = num(rg.clearance_m) || 0.1;
+    var others = S.placements.filter(function (o) { return o.id !== p.id && o.rig_position_id === rg.id; });
+    var step = fine ? 0.01 : GRID, snap = function (v) { return Math.round(v / step) * step; };
+    if (g.kind === 'point') return { t: 0, t2: null };
+    if (g.kind === 'line') {
+      var e = extentAlong(p, g), lo = Math.min(e / 2, g.len / 2), hi = Math.max(g.len - e / 2, g.len / 2);
+      var ok = function (t) { return t >= lo - 1e-6 && t <= hi + 1e-6 && others.every(function (o) { return Math.abs(t - num(o.offset_m)) >= (e + extentAlong(o, g)) / 2 + clr - 1e-6; }); };
+      var t0 = Math.max(lo, Math.min(hi, snap(want.t)));
+      var cands = [t0];
+      others.forEach(function (o) { var gap = (e + extentAlong(o, g)) / 2 + clr; cands.push(num(o.offset_m) - gap, num(o.offset_m) + gap); });
+      cands = cands.map(function (c) { return r2(c); }).filter(ok).sort(function (x, y) { return Math.abs(x - want.t) - Math.abs(y - want.t); });
+      return cands.length ? { t: cands[0], t2: null } : null;
+    }
+    if (g.kind === 'wall') {
+      var u = want.t, v = want.t2 == null ? d.h / 2 : want.t2;
+      if (ft.category === 'led_panel') { u = d.w / 2 + Math.round((u - d.w / 2) / d.w) * d.w; v = d.h / 2 + Math.round((v - d.h / 2) / d.h) * d.h; }
+      else { u = snap(u); v = snap(v); }
+      u = Math.max(d.w / 2, Math.min(g.W - d.w / 2, u)); v = Math.max(d.h / 2, Math.min(Math.max(g.Hgt, d.h) - d.h / 2, v));
+      var clashAt = function (uu, vv) { return others.some(function (o) { var od = dims(ftype(o.fixture_type_id)); return Math.abs(uu - num(o.offset_m)) < (d.w + od.w) / 2 - 1e-6 && Math.abs(vv - num(o.offset2_m)) < (d.h + od.h) / 2 - 1e-6; }); };
+      if (!clashAt(u, v)) return { t: r2(u), t2: r2(v) };
+      if (ft.category !== 'led_panel') return null;
+      // panels: jump to the nearest free cell on the wall grid
+      var best = null, cols = Math.floor(g.W / d.w + 1e-6), rows = Math.max(1, Math.floor(g.Hgt / d.h + 1e-6));
+      for (var ci = 0; ci < cols; ci++) for (var ri = 0; ri < rows; ri++) {
+        var cu = d.w / 2 + ci * d.w, cv = d.h / 2 + ri * d.h, dist = Math.hypot(cu - u, cv - v);
+        if (!clashAt(cu, cv) && (!best || dist < best.dist)) best = { t: r2(cu), t2: r2(cv), dist: dist };
+      }
+      return best ? { t: best.t, t2: best.t2 } : null;
+    }
+    // floor area
+    var x = snap(want.t), y = snap(want.t2 == null ? 1 : want.t2);
+    if (!inPoly([x, y], g.poly)) return null;
+    var hit = others.some(function (o) { var od = dims(ftype(o.fixture_type_id)); return Math.abs(x - num(o.offset_m)) < (d.w + od.w) / 2 + clr - 1e-6 && Math.abs(y - num(o.offset2_m)) < (d.d + od.d) / 2 + clr - 1e-6; });
+    return hit ? null : { t: r2(x), t2: r2(y) };
+  }
+
+  var drag = null;
+  Object.keys(VIEWS).forEach(function (name) {
+    var svg = $(VIEWS[name].svg);
+    svg.addEventListener('pointerdown', function (ev) {
+      var q = svgPoint(svg, ev), canEdit = D.me.role !== 'viewer';
+      var fx = ev.target.closest('[data-pid]');
+      if (fx) {
+        S.sel = fx.getAttribute('data-pid'); S.armed = null;
+        if (canEdit) { drag = { name: name, svg: svg, pid: S.sel, moved: false }; svg.setPointerCapture(ev.pointerId); }
+        render(); return;
+      }
+      if (S.armed && canEdit) { placeAt(name, q); return; }
+      S.sel = null; render();
+    });
+    svg.addEventListener('pointermove', function (ev) {
+      if (!drag || drag.svg !== svg) return;
+      var p = S.placements.find(function (x) { return x.id === drag.pid; }); if (!p) return;
+      var rg = rigById(p.rig_position_id), q = svgPoint(svg, ev), want = toParams(name, rg, q, p);
+      if (!want) return;
+      var res = resolve(p, rg, want, ev.shiftKey);
+      if (res && (res.t !== num(p.offset_m) || res.t2 !== num(p.offset2_m))) { p.offset_m = res.t; p.offset2_m = res.t2; drag.moved = true; S.dirty = true; Object.keys(VIEWS).forEach(renderView); $('dirty').hidden = false; }
+    });
+    svg.addEventListener('pointerup', function () { if (drag && drag.moved) render(); drag = null; });
+  });
+
+  function placeAt(name, q) {
+    var ft = ftype(S.armed), best = null;
+    S.stage.rig_positions.forEach(function (rg) {
+      if (!allowed(ft, rg)) return;
+      var dd = rigDist(name, rg, q);
+      if (dd < 0.6 && (!best || dd < best.d)) best = { rg: rg, d: dd };
+    });
+    if (!best) { flash('Tap closer to a truss, pole, point or the deck. ' + (ft.category === 'led_panel' ? 'LED panels go on the LED wall or deck.' : '')); return; }
+    var p = { id: uuid(), rig_position_id: best.rg.id, fixture_type_id: ft.id, stock_item_id: null, offset_m: 0, offset2_m: null,
+      pan_deg: 0, tilt_deg: 0, hang: best.rg.kind === 'floor' ? 'floor' : 'under', label: null, universe: null, address: null, mode: null };
+    var res = resolve(p, best.rg, toParams(name, best.rg, q, null) || { t: 0, t2: null }, false);
+    if (!res) { flash("No room there — it would clash with something already on " + best.rg.name + '.'); return; }
+    p.offset_m = res.t; p.offset2_m = res.t2;
+    assignStock(p);
+    S.placements.push(p); S.sel = p.id; S.dirty = true; render();
+  }
+  function usedStock() { var u = {}; S.placements.forEach(function (p) { if (p.stock_item_id) u[p.stock_item_id] = p.id; }); return u; }
+  function assignStock(p) {
+    var used = usedStock();
+    var s = stock.find(function (i) { return i.fixture_type_id === p.fixture_type_id && i.status === 'in_service' && !used[i.id]; });
+    if (s) { p.stock_item_id = s.id; p.universe = s.default_universe; p.address = s.default_address; p.mode = s.default_mode; }
+    else { p.stock_item_id = null; var ft = ftype(p.fixture_type_id); p.mode = ft.dmx_modes[0] ? ft.dmx_modes[0].name : null; }
+  }
+
+  // keyboard nudge
+  document.addEventListener('keydown', function (e) {
+    if (!S.sel || $('app').hidden || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || D.me.role === 'viewer') return;
+    var p = S.placements.find(function (x) { return x.id === S.sel; }); if (!p) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { removeSel(); e.preventDefault(); return; }
+    if (e.key === 'Escape') { S.sel = null; S.armed = null; render(); return; }
+    var step = e.shiftKey ? 0.01 : GRID, dt = 0, dt2 = 0;
+    if (e.key === 'ArrowRight') dt = step; else if (e.key === 'ArrowLeft') dt = -step;
+    else if (e.key === 'ArrowUp') dt2 = step; else if (e.key === 'ArrowDown') dt2 = -step; else return;
+    e.preventDefault();
+    var rg = rigById(p.rig_position_id), g = rigGeo(rg);
+    if (g.kind === 'line' && !dt) dt = dt2, dt2 = 0;
+    var res = resolve(p, rg, { t: (num(p.offset_m) || 0) + dt, t2: p.offset2_m == null ? null : num(p.offset2_m) + dt2 }, true);
+    if (res) { p.offset_m = res.t; p.offset2_m = res.t2; S.dirty = true; render(); }
+  });
+
+  // ---------------- palette ----------------
+  function renderPalette() {
+    var counts = {}; S.placements.forEach(function (p) { counts[p.fixture_type_id] = (counts[p.fixture_type_id] || 0) + 1; });
+    var box = $('palette'); box.innerHTML = '';
+    D.fixture_types.forEach(function (ft) {
+      if (ft.category === 'other') return;
+      var n = counts[ft.id] || 0, over = n > ft.in_service;
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'ftype' + (S.armed === ft.id ? ' armed' : '');
+      b.innerHTML = '<span>' + esc(ft.model) + '<small>' + esc((ft.manufacturer || '') + (ft.width_m == null ? ' · size TBC' : '')) + '</small></span>' +
+        '<span class="cnt' + (over ? ' over' : '') + '">' + n + ' / ' + ft.in_service + '</span>';
+      b.title = n + ' placed · ' + ft.in_service + ' working · ' + ft.total + ' owned';
+      b.onclick = function () { if (D.me.role === 'viewer') return; S.armed = S.armed === ft.id ? null : ft.id; S.sel = null; render(); };
+      box.appendChild(b);
+    });
+  }
+
+  // ---------------- warnings ----------------
+  function renderWarnings() {
+    var w = [], counts = {};
+    S.placements.forEach(function (p) { counts[p.fixture_type_id] = (counts[p.fixture_type_id] || 0) + 1; });
+    Object.keys(counts).forEach(function (id) { var ft = ftype(id); if (counts[id] > ft.in_service) w.push('Over-allocated: ' + counts[id] + ' × ' + ft.model + ' placed, only ' + ft.in_service + ' working.'); });
+    // DMX overlaps
+    var ranges = S.placements.filter(function (p) { return p.universe && p.address; }).map(function (p) {
+      return { p: p, u: +p.universe, a: +p.address, b: +p.address + chCount(p.mode) - 1 };
+    });
+    for (var i = 0; i < ranges.length; i++) for (var j = i + 1; j < ranges.length; j++) {
+      var x = ranges[i], y = ranges[j];
+      if (x.u === y.u && x.a <= y.b && y.a <= x.b) w.push('DMX clash on universe ' + x.u + ': ' + (x.p.label || ftype(x.p.fixture_type_id).model) + ' (' + x.a + '–' + x.b + ') and ' + (y.p.label || ftype(y.p.fixture_type_id).model) + ' (' + y.a + '–' + y.b + ').');
+    }
+    // plane loads
+    S.stage.rig_positions.forEach(function (rg) {
+      if (rg.max_load_kg == null) return;
+      var kg = S.placements.filter(function (p) { return p.rig_position_id === rg.id; }).reduce(function (s, p) { return s + (num(ftype(p.fixture_type_id).weight_kg) || 0); }, 0);
+      if (kg > num(rg.max_load_kg)) w.push(rg.name + ' is over its load limit: ' + kg.toFixed(1) + ' kg of ' + rg.max_load_kg + ' kg.');
+    });
+    $('warnbar').innerHTML = w.map(function (t) { return '<div class="note bad">' + esc(t) + '</div>'; }).join('');
+  }
+  var flashT = null;
+  function flash(msg, kind) {
+    var n = document.createElement('div'); n.className = 'note ' + (kind || 'warn'); n.textContent = msg;
+    $('warnbar').prepend(n); clearTimeout(flashT); flashT = setTimeout(function () { n.remove(); }, 4000);
+  }
+
+  // ---------------- inspector ----------------
+  function renderInspector() {
+    var box = $('inspector'), p = S.placements.find(function (x) { return x.id === S.sel; });
+    if (!S.layout) { box.innerHTML = '<h2>Start</h2><p class="muted">Pick a layout above, or make a new one.</p>'; return; }
+    if (!p) {
+      var kg = 0; S.placements.forEach(function (q) { kg += num(ftype(q.fixture_type_id).weight_kg) || 0; });
+      box.innerHTML = '<h2>' + esc(S.layout.name) + '</h2><p class="muted">' + S.placements.length + ' fixtures · ' + kg.toFixed(1) + ' kg rigged</p>' +
+        (S.armed ? '<p class="note ok">Placing <b>' + esc(ftype(S.armed).model) + '</b> — tap a rigging position. Esc to stop.</p>' : '<p class="muted">Tap a fixture to edit it.</p>') +
+        '<h2>Rigging positions</h2>' + S.stage.rig_positions.map(function (rg) {
+          var n = S.placements.filter(function (q) { return q.rig_position_id === rg.id; });
+          var w = n.reduce(function (s, q) { return s + (num(ftype(q.fixture_type_id).weight_kg) || 0); }, 0);
+          return '<div>' + esc(rg.name) + (rg.is_placeholder ? ' <span class="muted">(TBC)</span>' : '') + ' <span class="muted">· ' + n.length + ' · ' + w.toFixed(1) + ' kg</span></div>';
+        }).join('');
+      return;
+    }
+    var ft = ftype(p.fixture_type_id), rg = rigById(p.rig_position_id), g = rigGeo(rg), d = dims(ft), used = usedStock(), ro = D.me.role === 'viewer' ? ' disabled' : '';
+    var stockOpts = '<option value="">— none (not in stock) —</option>' + stock.filter(function (s) { return s.fixture_type_id === ft.id; }).map(function (s) {
+      var taken = used[s.id] && used[s.id] !== p.id, bad = s.status !== 'in_service';
+      return '<option value="' + s.id + '"' + (s.id === p.stock_item_id ? ' selected' : '') + (taken || bad ? ' disabled' : '') + '>' +
+        esc((s.asset_tag || s.source_ref || 'item').replace('Patch Lists › Lighting ', '') + (bad ? ' · ' + s.status : taken ? ' · in use' : '')) + '</option>';
+    }).join('');
+    var rigOpts = S.stage.rig_positions.filter(function (r) { return allowed(ft, r); }).map(function (r) { return '<option value="' + r.id + '"' + (r.id === rg.id ? ' selected' : '') + '>' + esc(r.name) + '</option>'; }).join('');
+    var modes = (ft.dmx_modes || []).map(function (m) { return '<option' + (m.name === p.mode ? ' selected' : '') + '>' + esc(m.name) + '</option>'; }).join('');
+    var posLbl = g.kind === 'area' ? ['Across (x, m)', 'Depth (y, m)'] : g.kind === 'wall' ? ['From left (m)', 'Height on wall (m)'] : ['Along ' + rg.name + ' (m)', null];
+    var c = world(p);
+    box.innerHTML =
+      '<h2>' + esc(ft.model) + '</h2>' +
+      '<p class="muted">' + esc(ft.manufacturer || '') + ' · ' + (d.known ? fmt(d.w) + '×' + fmt(d.h) + '×' + fmt(d.d) + ' m' : 'size TBC') + (ft.weight_kg ? ' · ' + ft.weight_kg + ' kg' : '') + '</p>' +
+      (!p.stock_item_id ? '<p class="note bad">Not linked to a stock item — none free.</p>' : '') +
+      '<label>Label</label><input id="i-label" value="' + esc(p.label || '') + '" placeholder="e.g. Front Wash 1"' + ro + '>' +
+      '<label>Stock item</label><select id="i-stock"' + ro + '>' + stockOpts + '</select>' +
+      '<label>Rigging position</label><select id="i-rig"' + ro + '>' + rigOpts + '</select>' +
+      '<div class="kv"><div><label>' + posLbl[0] + '</label><input id="i-t" type="number" step="0.05" value="' + fmt(num(p.offset_m) || 0) + '"' + ro + '></div>' +
+      (posLbl[1] ? '<div><label>' + posLbl[1] + '</label><input id="i-t2" type="number" step="0.05" value="' + fmt(num(p.offset2_m) || 0) + '"' + ro + '></div>' : '<div></div>') + '</div>' +
+      (g.kind === 'line' || g.kind === 'point' ? '<label>Mounting</label><select id="i-hang"' + ro + '>' + ['under', 'over', 'side'].map(function (h) { return '<option' + (h === p.hang ? ' selected' : '') + '>' + h + '</option>'; }).join('') + '</select>' : '') +
+      '<div class="kv"><div><label>Pan °</label><input id="i-pan" type="number" step="5" value="' + (num(p.pan_deg) || 0) + '"' + ro + '></div><div><label>Tilt °</label><input id="i-tilt" type="number" step="5" value="' + (num(p.tilt_deg) || 0) + '"' + ro + '></div></div>' +
+      '<div class="kv"><div><label>Universe</label><input id="i-uni" type="number" min="1" value="' + (p.universe || '') + '"' + ro + '></div><div><label>Address</label><input id="i-addr" type="number" min="1" max="512" value="' + (p.address || '') + '"' + ro + '></div></div>' +
+      (modes ? '<label>DMX mode</label><select id="i-mode"' + ro + '>' + modes + '</select>' : '') +
+      '<p class="muted" style="font-size:12px">Centre: x ' + fmt(c[0]) + ' · y ' + fmt(c[1]) + ' · z ' + fmt(c[2]) + ' m</p>' +
+      (ro ? '' : '<div class="row"><button id="i-dup" type="button">Duplicate</button><button id="i-del" type="button">Remove</button></div>');
+    if (ro) return;
+    var upd = function () { S.dirty = true; render(); };
+    $('i-label').onchange = function () { p.label = this.value.trim() || null; upd(); };
+    $('i-stock').onchange = function () {
+      p.stock_item_id = this.value || null; var s = stockById(p.stock_item_id);
+      if (s) { p.universe = s.default_universe; p.address = s.default_address; p.mode = s.default_mode || p.mode; } upd();
+    };
+    $('i-rig').onchange = function () {
+      var nr = rigById(this.value), res = resolve(p, nr, { t: 0, t2: rigGeo(nr).kind === 'area' ? 1 : null }, false);
+      if (!res) { flash('No free spot on ' + nr.name + '.'); render(); return; }
+      p.rig_position_id = nr.id; p.offset_m = res.t; p.offset2_m = res.t2; p.hang = nr.kind === 'floor' ? 'floor' : (p.hang === 'floor' ? 'under' : p.hang); upd();
+    };
+    var setPos = function () {
+      var res = resolve(p, rg, { t: num($('i-t').value), t2: $('i-t2') ? num($('i-t2').value) : null }, true);
+      if (!res) { flash("That spot clashes or is off the plane — left it where it was."); render(); return; }
+      p.offset_m = res.t; p.offset2_m = res.t2; upd();
+    };
+    $('i-t').onchange = setPos; if ($('i-t2')) $('i-t2').onchange = setPos;
+    if ($('i-hang')) $('i-hang').onchange = function () { p.hang = this.value; upd(); };
+    $('i-pan').onchange = function () { p.pan_deg = num(this.value) || 0; upd(); };
+    $('i-tilt').onchange = function () { p.tilt_deg = num(this.value) || 0; upd(); };
+    $('i-uni').onchange = function () { p.universe = num(this.value); upd(); };
+    $('i-addr').onchange = function () { p.address = num(this.value); upd(); };
+    if ($('i-mode')) $('i-mode').onchange = function () { p.mode = this.value; upd(); };
+    $('i-del').onclick = removeSel;
+    $('i-dup').onclick = function () {
+      var q = JSON.parse(JSON.stringify(p)); q.id = uuid(); q.label = null;
+      var res = resolve(q, rg, { t: (num(p.offset_m) || 0) + extentAlongSafe(p, g) + 0.1, t2: p.offset2_m }, false);
+      if (!res) { flash('No room for another on ' + rg.name + '.'); return; }
+      q.offset_m = res.t; q.offset2_m = res.t2; assignStock(q); S.placements.push(q); S.sel = q.id; upd();
+    };
+  }
+  function extentAlongSafe(p, g) { return g.kind === 'line' ? extentAlong(p, g) : dims(ftype(p.fixture_type_id)).w; }
+  function removeSel() {
+    var id = S.sel; S.placements = S.placements.filter(function (p) { return p.id !== id; });
+    S.cables = S.cables.filter(function (c) { return c.from_placement_id !== id && c.to_placement_id !== id; });
+    S.sel = null; S.dirty = true; render();
+  }
+
+  // ---------------- stages + layouts ----------------
+  function fillStages() {
+    var sel = $('sel-stage'), last = load('stage_designer_stage');
+    sel.innerHTML = D.stages.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + '</option>'; }).join('');
+    if (last && D.stages.some(function (s) { return s.id === last; })) sel.value = last;
+    setStage(sel.value);
+  }
+  function setStage(id) {
+    S.stage = D.stages.find(function (s) { return s.id === id; }); store('stage_designer_stage', id);
+    S.layout = null; S.placements = []; S.cables = []; S.sel = null; S.dirty = false;
+    fillLayouts();
+  }
+  function fillLayouts(selectId) {
+    var ls = D.layouts.filter(function (l) { return l.stage_id === S.stage.id; });
+    $('sel-layout').innerHTML = '<option value="">' + (ls.length ? '— choose a layout —' : '— no layouts yet —') + '</option>' +
+      ls.map(function (l) { return '<option value="' + l.id + '">' + esc(l.name) + '</option>'; }).join('');
+    if (selectId) { $('sel-layout').value = selectId; openLayout(selectId); } else render();
+    $('b-rename').disabled = $('b-del').disabled = $('b-save').disabled = !selectId;
+  }
+  function openLayout(id) {
+    if (!id) { S.layout = null; S.placements = []; render(); return; }
+    call('layout_get', { layout_id: id }).then(function (r) {
+      if (!r.ok) { flash(errText(r), 'bad'); return; }
+      S.layout = r.layout; S.placements = r.placements; S.cables = r.cable_runs; S.sel = null; S.dirty = false;
+      $('b-rename').disabled = $('b-del').disabled = $('b-save').disabled = false;
+      render();
+    }).catch(function (e) { flash('Could not load the layout. ' + e.message, 'bad'); });
+  }
+  $('sel-stage').onchange = function () {
+    if (S.dirty && !confirm('Discard unsaved changes?')) { this.value = S.stage.id; return; }
+    setStage(this.value);
+  };
+  $('sel-layout').onchange = function () {
+    if (S.dirty && !confirm('Discard unsaved changes?')) { this.value = S.layout ? S.layout.id : ''; return; }
+    openLayout(this.value);
+  };
+  $('b-new').onclick = function () {
+    if (S.dirty && !confirm('Discard unsaved changes?')) return;
+    var name = (prompt('Name for the new ' + S.stage.name + ' layout:') || '').trim(); if (!name) return;
+    call('layout_create', { stage_id: S.stage.id, name: name }).then(function (r) {
+      if (!r.ok) { flash(errText(r), 'bad'); return; }
+      D.layouts.unshift({ id: r.layout_id, stage_id: S.stage.id, name: name }); fillLayouts(r.layout_id);
+    }).catch(function (e) { flash(/duplicate|unique/i.test(e.message) ? 'There is already a layout with that name.' : e.message, 'bad'); });
+  };
+  $('b-rename').onclick = function () {
+    var name = (prompt('New name:', S.layout.name) || '').trim(); if (!name || name === S.layout.name) return;
+    S.layout.name = name; save({ name: name });
+  };
+  $('b-del').onclick = function () {
+    if (!confirm('Delete "' + S.layout.name + '"? This cannot be undone.')) return;
+    call('layout_delete', { layout_id: S.layout.id }).then(function (r) {
+      if (!r.ok) { flash(errText(r), 'bad'); return; }
+      D.layouts = D.layouts.filter(function (l) { return l.id !== S.layout.id; }); S.dirty = false; fillLayouts();
+      S.layout = null; S.placements = []; render();
+    });
+  };
+  function save(extra) {
+    if (!S.layout) return;
+    $('b-save').disabled = true;
+    var body = Object.assign({ layout_id: S.layout.id, expected_updated_at: S.layout.updated_at, placements: S.placements, cable_runs: S.cables }, extra || {});
+    call('layout_save', body).then(function (r) {
+      $('b-save').disabled = false;
+      if (!r.ok) { flash(errText(r), 'bad'); return; }
+      S.layout.updated_at = r.updated_at; S.dirty = false;
+      var l = D.layouts.find(function (x) { return x.id === S.layout.id; }); if (l) l.name = S.layout.name;
+      if (extra && extra.name) fillLayouts(S.layout.id);
+      render(); flash(r.over_allocated && r.over_allocated.length ? 'Saved — but over-allocated, see warnings.' : 'Saved.', r.over_allocated && r.over_allocated.length ? 'warn' : 'ok');
+    }).catch(function (e) { $('b-save').disabled = false; flash('Save failed: ' + e.message, 'bad'); });
+  }
+  $('b-save').onclick = function () { save(); };
+  document.addEventListener('keydown', function (e) { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); if (D && D.me.role !== 'viewer') save(); } });
+
+  // mobile view tabs
+  Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
+    b.onclick = function () { Array.prototype.forEach.call(document.querySelectorAll('#views .view'), function (v) { v.classList.toggle('on', v.getAttribute('data-v') === b.getAttribute('data-v')); }); };
+  });
+  window.addEventListener('resize', function () { if (S.stage) Object.keys(VIEWS).forEach(renderView); });
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (S.stage) render(); });
+
+  // ---------------- start ----------------
+  var fromHash = (location.hash || '').replace(/^#/, '').trim();
+  if (fromHash.length >= 20) { key = fromHash; store(KEY_STORE, key); history.replaceState(null, '', location.pathname); }
+  else key = load(KEY_STORE);
+  showLock();
+})();
+</script>
+</body>
+</html>
